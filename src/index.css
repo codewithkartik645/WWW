@@ -1,5 +1,66 @@
 @import "tailwindcss";
 
+:root {
+  --ink: #2B2620;
+  --sub: #6E6455;
+  --border: #E6DFD1;
+  --bg: #FAF6EF;
+  --paper: #FFFFFF;
+  --wine: #7A2E3A;
+  --gold: #B8862E;
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html, body {
+  background: var(--bg);
+}
+
 body {
-  font-family: Inter, sans-serif;
+  font-family: "Source Sans 3", Inter, sans-serif;
+  color: var(--ink);
+}
+
+/* Headings & display type use a classic serif for an elegant, editorial feel */
+.font-h,
+h1, h2, h3 {
+  font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+  letter-spacing: 0.01em;
+}
+
+/* Card surface: warm paper, soft border, gentle lift on hover */
+.card {
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(43, 38, 32, 0.04);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+/* Refined scrollbars matching the warm palette */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #DED4BE; border-radius: 999px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: #C9BB9C; }
+
+/* Selection color matches the wine accent */
+::selection { background: rgba(122, 46, 58, 0.18); color: var(--ink); }
+
+/* Subtle focus ring, used across inputs/buttons for keyboard accessibility */
+:focus-visible {
+  outline: 2px solid var(--wine);
+  outline-offset: 2px;
+}
+
+input, textarea, select {
+  font-family: inherit;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--wine) !important;
+  box-shadow: 0 0 0 3px rgba(122, 46, 58, 0.12);
 }

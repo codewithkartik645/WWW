@@ -1,6 +1,5 @@
 // A minimal in-memory stand-in for @supabase/supabase-js, covering exactly the calls
 // App.jsx/useAuth/useClassroomData/profileAdmin/uploadAttachment actually make.
-import { vi } from "vitest";
 
 export function createMockSupabase() {
   const state = {
