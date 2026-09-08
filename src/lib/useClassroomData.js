@@ -14,8 +14,11 @@ export function useClassroomData(authProfile, userId) {
   const [shared, setShared] = useState(null); // the JSONB blob from `classroom`
   const [profiles, setProfiles] = useState({}); // { [userId]: {name, role, departmentId, photo} }
   const [loaded, setLoaded] = useState(false);
+  const [saveError, setSaveError] = useState(null); // non-null when the last write to the server failed
   const writeTimer = useRef(null);
+  const retryTimer = useRef(null);
   const latestShared = useRef(null);
+  const pendingRef = useRef(false); // true whenever there's a scheduled or in-flight write not yet confirmed saved
 
   const loadProfiles = useCallback(async () => {
     const { data, error } = await supabase.from("profiles").select("*");
@@ -25,6 +28,34 @@ export function useClassroomData(authProfile, userId) {
       dict[p.id] = { name: p.name, role: p.role, departmentId: p.department_id, photo: p.photo_url, email: p.email, active: p.active };
     }
     setProfiles(dict);
+  }, []);
+
+  // Actually performs the write and reports whether it succeeded — a previous version of this
+  // function fired the request and never checked the result, so a failed save (dropped
+  // connection, an RLS rule rejecting it, a transient Supabase hiccup, ...) looked identical to a
+  // successful one: the change stayed visible locally until the next reload or the next Realtime
+  // update quietly replaced it with the still-old server copy. That's the "I added something and
+  // it went missing" bug. Now a failure surfaces via `saveError` and retries automatically.
+  const persist = useCallback((payload, attempt = 0) => {
+    supabase.from("classroom").update({ data: payload, updated_at: new Date().toISOString() }).eq("id", 1)
+      .then(({ error }) => {
+        if (error) {
+          // eslint-disable-next-line no-console
+          console.error("Failed to save classroom data:", error.message);
+          setSaveError(error.message);
+          // Automatic retry with backoff, up to 3 tries, as long as this is still the latest
+          // pending write (a newer edit superseding it will have its own retry chain).
+          if (attempt < 3 && latestShared.current === payload) {
+            if (retryTimer.current) clearTimeout(retryTimer.current);
+            retryTimer.current = setTimeout(() => persist(payload, attempt + 1), 1500 * (attempt + 1));
+          } else {
+            pendingRef.current = false;
+          }
+        } else {
+          setSaveError(null);
+          pendingRef.current = false;
+        }
+      });
   }, []);
 
   useEffect(() => {
@@ -51,7 +82,7 @@ export function useClassroomData(authProfile, userId) {
       })
       .subscribe();
 
-    return () => { cancelled = true; supabase.removeChannel(channel); };
+    return () => { cancelled = true; supabase.removeChannel(channel); if (retryTimer.current) clearTimeout(retryTimer.current); };
   }, [loadProfiles]);
 
   // setData mirrors the old API: setData(updaterFnOrValue) where the value/updater
@@ -67,15 +98,33 @@ export function useClassroomData(authProfile, userId) {
       latestShared.current = nextShared;
 
       // Debounce writes so rapid edits (typing, dragging) don't spam the DB.
+      pendingRef.current = true;
       if (writeTimer.current) clearTimeout(writeTimer.current);
-      writeTimer.current = setTimeout(() => {
-        supabase.from("classroom").update({ data: latestShared.current, updated_at: new Date().toISOString() }).eq("id", 1);
-      }, 400);
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+      writeTimer.current = setTimeout(() => persist(nextShared), 400);
 
       return nextShared;
     });
-  }, [profiles, userId]);
+  }, [profiles, userId, persist]);
+
+  // Best-effort: if the tab is closed/refreshed while a write is still pending (within the 400ms
+  // debounce window, or mid-retry after a failure), warn instead of losing the change silently.
+  useEffect(() => {
+    const handler = (e) => {
+      if (pendingRef.current) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
+
+  const retryNow = useCallback(() => {
+    if (retryTimer.current) clearTimeout(retryTimer.current);
+    if (latestShared.current) persist(latestShared.current);
+  }, [persist]);
 
   const data = loaded && shared ? { ...shared, profiles, session: userId } : null;
-  return { data, setData, loaded };
+  return { data, setData, loaded, saveError, retryNow };
 }

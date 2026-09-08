@@ -3,7 +3,7 @@ import {
   LayoutGrid, CalendarDays, CalendarClock, ListChecks, Users2, TrendingUp,
   FolderOpen, Settings as SettingsIcon, Shield, Wand2, Upload, GraduationCap,
   Megaphone, ClipboardList, Building2, X, Award, LogOut, Activity, BookOpen,
-  Trash2,
+  Trash2, AlertTriangle, RefreshCw,
 } from "lucide-react";
 import { useAuth } from "./lib/useAuth";
 import { useClassroomData } from "./lib/useClassroomData";
@@ -92,9 +92,38 @@ function LoadingScreen({ label }) {
   );
 }
 
+// Shown whenever the last write to the shared classroom failed to save (network hiccup,
+// dropped connection, etc.) after all automatic retries were exhausted. Without this banner,
+// a failed save was invisible: the change stayed on screen locally, then quietly disappeared
+// the moment a reload or another device's update replaced it with the still-old server copy —
+// exactly the "I added something and it went missing" symptom. Retrying here re-attempts the
+// exact same save; refreshing is only safe once it succeeds.
+function SaveErrorBanner({ error, onRetry }) {
+  if (!error) return null;
+  return (
+    <div
+      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl max-w-md"
+      style={{ background: "#3A2320", border: `1px solid ${C.red}`, color: "#F5EFE4" }}
+    >
+      <AlertTriangle size={18} style={{ color: "#E08A7D", flexShrink: 0 }} />
+      <div className="text-xs leading-snug">
+        <div className="font-semibold mb-0.5">Your last change hasn't saved yet</div>
+        <div style={{ color: "#D8C7BE" }}>Keep this tab open — don't refresh until it saves, or you'll lose it.</div>
+      </div>
+      <button
+        onClick={onRetry}
+        className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg flex-shrink-0"
+        style={{ background: C.red, color: "#fff" }}
+      >
+        <RefreshCw size={12} /> Retry
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const { session, profile, loaded: authLoaded, signOut } = useAuth();
-  const { data: classroomData, setData, loaded: dataLoaded } = useClassroomData(profile, session?.user?.id ?? null);
+  const { data: classroomData, setData, loaded: dataLoaded, saveError, retryNow } = useClassroomData(profile, session?.user?.id ?? null);
   const [tab, setTab] = useState("dashboard");
   const [query, setQuery] = useState("");
   const [viewStudentKey, setViewStudentKey] = useState(null); // which student the admin drilled into, for the detail page
@@ -179,6 +208,7 @@ export default function App() {
   return (
     <div className="min-h-screen" style={{ background: C.bg, color: C.text, fontFamily: "'Source Sans 3', 'Inter', sans-serif" }}>
       <AttachmentPreviewModal />
+      <SaveErrorBanner error={saveError} onRetry={retryNow} />
       <ConfirmModal
         open={confirmLogoutOpen}
         title="Log out?"
