@@ -16,7 +16,7 @@ import {
 } from "../components/UI";
 
 function CalendarView({ data, setData, editable }) {
-  const [cursor, setCursor] = useState(new Date(2026, 7, 1));
+  const [cursor, setCursor] = useState(new Date());
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState({ title: "", date: "", type: "milestone" });
   const [importing, setImporting] = useState(false);

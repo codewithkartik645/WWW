@@ -10,6 +10,7 @@ export async function updateProfile(userId, patch) {
   if ("photo" in patch) row.photo_url = patch.photo;
   if ("departmentId" in patch) row.department_id = patch.departmentId;
   if ("role" in patch) row.role = patch.role;
+  if ("active" in patch) row.active = patch.active;
   const { error } = await supabase.from("profiles").update(row).eq("id", userId);
   return { error };
 }

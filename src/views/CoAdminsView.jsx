@@ -17,7 +17,7 @@ import {
 } from "../components/UI";
 import { updateProfile } from "../lib/profileAdmin";
 
-function CoAdminsView({ data, setData, goTo }) {
+function CoAdminsView({ data, setData, goTo, refreshProfiles }) {
   const isSuperAdmin = data.profiles[data.session]?.role === "admin"; // only the original admin account manages co-admins
   const coAdminKeys = useMemo(() => Object.keys(data.profiles).filter((k) => isAdminKey(k, data.profiles) && data.profiles[k]?.role !== "admin"), [data.profiles]);
   // Everyone signed up who ISN'T already an admin/coadmin — candidates to promote.
@@ -28,6 +28,7 @@ function CoAdminsView({ data, setData, goTo }) {
   const [promoteKey, setPromoteKey] = useState("");
   const [promoteDept, setPromoteDept] = useState(data.departments[0]?.id || DEFAULT_DEPT_ID);
   const [promoteError, setPromoteError] = useState("");
+  const [actionError, setActionError] = useState("");
 
   // Departments: the director creates/renames these; each co-admin (HOD) is tagged to exactly one.
   const [newDeptName, setNewDeptName] = useState("");
@@ -54,8 +55,11 @@ function CoAdminsView({ data, setData, goTo }) {
     });
   };
   const setCoAdminDept = (key, departmentId) => {
+    setActionError("");
     updateProfile(key, { departmentId }).then(({ error }) => {
-      if (!error) setData((d) => logActivity(d, `${d.profiles[key]?.name || "Co-admin"} reassigned to ${deptName(d, departmentId)}`));
+      if (error) { setActionError(`Couldn't reassign department: ${error.message}`); return; }
+      setData((d) => logActivity(d, `${d.profiles[key]?.name || "Co-admin"} reassigned to ${deptName(d, departmentId)}`));
+      refreshProfiles?.();
     });
   };
 
@@ -67,12 +71,16 @@ function CoAdminsView({ data, setData, goTo }) {
       if (error) { setPromoteError(error.message); return; }
       setData((d) => logActivity(d, `${d.profiles[promoteKey]?.name || "A user"} promoted to Co-admin (HOD) — ${deptName(d, promoteDept)}`));
       setPromoteKey("");
+      refreshProfiles?.();
     });
   };
   const removeCoAdmin = (key) => {
     confirmDelete(`Admin access for "${data.profiles[key]?.name || "this co-admin"}"`, () => {
+      setActionError("");
       updateProfile(key, { role: "student" }).then(({ error }) => {
-        if (!error) setData((d) => logActivity(d, `Co-admin access removed: ${d.profiles[key]?.name || key} (now a student)`));
+        if (error) { setActionError(`Couldn't remove admin access: ${error.message}`); return; }
+        setData((d) => logActivity(d, `Co-admin access removed: ${d.profiles[key]?.name || key} (now a student)`));
+        refreshProfiles?.();
       });
     });
   };
@@ -88,6 +96,9 @@ function CoAdminsView({ data, setData, goTo }) {
   return (
     <div className="max-w-md space-y-4">
       {deleteModal}
+      {actionError && (
+        <div className="text-xs px-3 py-2 rounded-lg" style={{ background: "#F1E1DC", color: "#A6423A" }}>{actionError}</div>
+      )}
 
       <Card style={{ borderLeft: "3px solid #2C4A63" }}>
         <div className="text-xs font-semibold mb-1 flex items-center gap-1.5" style={{ color: "#2B2620" }}><Building2 size={13} /> DEPARTMENTS ({data.departments.length})</div>

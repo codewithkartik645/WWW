@@ -15,7 +15,7 @@ import {
 } from "../components/UI";
 import { updateProfile } from "../lib/profileAdmin";
 
-function AdminStudentsView({ data, setData, onViewStudent }) {
+function AdminStudentsView({ data, setData, onViewStudent, refreshProfiles }) {
   const isDirector = data.profiles[data.session]?.role === "admin";
   const isHOD = isAdminKey(data.session, data.profiles) && !isDirector;
   const myDeptId = isHOD ? (data.profiles[data.session]?.departmentId || data.departments[0]?.id) : null;
@@ -25,6 +25,8 @@ function AdminStudentsView({ data, setData, onViewStudent }) {
   const [deptTab, setDeptTab] = useState(isHOD ? myDeptId : "all");
   const [newStudent, setNewStudent] = useState({ name: "", id: "", password: "", departmentId: isHOD ? myDeptId : (data.departments[0]?.id || DEFAULT_DEPT_ID) });
   const [newStudentError, setNewStudentError] = useState("");
+  const [actionError, setActionError] = useState(""); // surfaces a failed deactivate/department-change instead of failing silently
+  const [changingDept, setChangingDept] = useState(null); // student key whose department dropdown is mid-save
 
   const [search, setSearch] = useState("");
 
@@ -65,10 +67,26 @@ function AdminStudentsView({ data, setData, onViewStudent }) {
     // must never live in frontend code — so "remove" here means deactivate: the account
     // can no longer sign in, but nothing is destroyed. A super-admin can permanently
     // delete the underlying auth user later from Supabase Dashboard → Authentication.
+    setActionError("");
     updateProfile(key, { active: false }).then(({ error }) => {
-      if (!error) setData((d) => logActivity(d, `Student account deactivated: ${d.profiles[key]?.name || key}`));
+      if (error) {
+        setActionError(`Couldn't deactivate this account: ${error.message}`);
+      } else {
+        setData((d) => logActivity(d, `Student account deactivated: ${d.profiles[key]?.name || key}`));
+        refreshProfiles?.(); // reflect it immediately rather than waiting on realtime/a reload
+      }
     });
     setRemoveTarget(null);
+  };
+
+  const changeDepartment = (key, departmentId) => {
+    setActionError("");
+    setChangingDept(key);
+    updateProfile(key, { departmentId }).then(({ error }) => {
+      setChangingDept(null);
+      if (error) setActionError(`Couldn't change department: ${error.message}`);
+      else refreshProfiles?.();
+    });
   };
 
   const removeTargetProfile = removeTarget ? data.profiles[removeTarget] : null;
@@ -83,6 +101,16 @@ function AdminStudentsView({ data, setData, onViewStudent }) {
         onConfirm={() => performRemove(removeTarget)}
         onCancel={() => setRemoveTarget(null)}
       />
+
+      {actionError && (
+        <div className="text-xs px-3 py-2 rounded-lg" style={{ background: "#F1E1DC", color: "#A6423A" }}>{actionError}</div>
+      )}
+
+      {isDirector && data.departments.length <= 1 && (
+        <div className="text-xs px-3 py-2 rounded-lg bg-white border border-[#E6DFD1]" style={{ color: "#6E6455" }}>
+          There's only one department set up right now, so there's nowhere to reassign a student to. Add another department from <b>Co-Admins</b> in the sidebar to enable the department switcher here.
+        </div>
+      )}
 
       {isDirector && data.departments.length > 1 && (
         <div className="flex gap-1 bg-white border border-[#E6DFD1] rounded-lg p-1 w-fit flex-wrap">
@@ -136,8 +164,9 @@ function AdminStudentsView({ data, setData, onViewStudent }) {
                   {manageable && data.departments.length > 1 && (
                     <select
                       value={profile.departmentId || data.departments[0]?.id}
-                      onChange={(e) => updateProfile(key, { departmentId: e.target.value })}
-                      className="text-xs border border-[#E6DFD1] rounded-lg px-2 py-1 flex-shrink-0"
+                      onChange={(e) => changeDepartment(key, e.target.value)}
+                      disabled={changingDept === key}
+                      className="text-xs border border-[#E6DFD1] rounded-lg px-2 py-1 flex-shrink-0 disabled:opacity-50"
                     >
                       {data.departments.map((dp) => <option key={dp.id} value={dp.id}>{dp.name}</option>)}
                     </select>

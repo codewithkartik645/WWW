@@ -13,6 +13,18 @@
 -- Identity/roles ARE fully relational (via Supabase Auth + a `profiles` table)
 -- because that's where real security (row-level security policies) matters.
 
+-- ============================================================================
+-- MIGRATION (if you already ran this file before Sept 2026): admin actions like
+-- deactivating a student or changing their department update the database fine,
+-- but without this, the change won't show up on screen until you reload the
+-- page — the profiles table was never added to Supabase's realtime publication.
+-- Run just this one line in SQL Editor:
+--
+--      alter publication supabase_realtime add table profiles;
+--
+-- (If you're setting this up fresh, the same line further down already covers it.)
+-- ============================================================================
+
 -- 1. Profiles — one row per real user account, linked to Supabase's built-in auth.users.
 create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -85,8 +97,11 @@ create policy "classroom is writable by any signed-in user"
   on classroom for update
   using (auth.role() = 'authenticated');
 
--- 3. Realtime: let clients subscribe to live changes on the classroom row.
+-- 3. Realtime: let clients subscribe to live changes on the classroom row, and on
+-- profiles (needed so an admin's department-change / activate-deactivate actions show
+-- up immediately for everyone, instead of only after a page reload).
 alter publication supabase_realtime add table classroom;
+alter publication supabase_realtime add table profiles;
 
 -- 4. File storage bucket for attachments (datesheets, syllabi, announcement files, etc).
 insert into storage.buckets (id, name, public)

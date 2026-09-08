@@ -126,5 +126,5 @@ export function useClassroomData(authProfile, userId) {
   }, [persist]);
 
   const data = loaded && shared ? { ...shared, profiles, session: userId } : null;
-  return { data, setData, loaded, saveError, retryNow };
+  return { data, setData, loaded, saveError, retryNow, refreshProfiles: loadProfiles };
 }

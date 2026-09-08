@@ -123,7 +123,7 @@ function SaveErrorBanner({ error, onRetry }) {
 
 export default function App() {
   const { session, profile, loaded: authLoaded, signOut } = useAuth();
-  const { data: classroomData, setData, loaded: dataLoaded, saveError, retryNow } = useClassroomData(profile, session?.user?.id ?? null);
+  const { data: classroomData, setData, loaded: dataLoaded, saveError, retryNow, refreshProfiles } = useClassroomData(profile, session?.user?.id ?? null);
   const [tab, setTab] = useState("dashboard");
   const [query, setQuery] = useState("");
   const [viewStudentKey, setViewStudentKey] = useState(null); // which student the admin drilled into, for the detail page
@@ -252,9 +252,9 @@ export default function App() {
           {tab === "classes" && <PlannerView data={data} setData={setData} role="admin" />}
           {tab === "tasks" && <TasksView data={data} setData={setData} editable={isAdmin} />}
           {tab === "cocurricular" && (isAdmin ? <AdminCoCurricularView data={data} setData={setData} /> : <StudentCoCurricularView data={data} setData={setData} />)}
-          {tab === "students" && isAdmin && <AdminStudentsView data={data} setData={setData} onViewStudent={(key) => { setViewStudentKey(key); goTo("student-detail"); }} />}
+          {tab === "students" && isAdmin && <AdminStudentsView data={data} setData={setData} onViewStudent={(key) => { setViewStudentKey(key); goTo("student-detail"); }} refreshProfiles={refreshProfiles} />}
           {tab === "team-activity" && isAdmin && <TeamActivityView data={data} setData={setData} onViewStudent={(key) => { setViewStudentKey(key); goTo("student-detail"); }} goTo={goTo} />}
-          {tab === "coadmins" && isAdmin && <CoAdminsView data={data} setData={setData} goTo={goTo} />}
+          {tab === "coadmins" && isAdmin && <CoAdminsView data={data} setData={setData} goTo={goTo} refreshProfiles={refreshProfiles} />}
           {tab === "student-detail" && isAdmin && <AdminStudentDetailView data={data} setData={setData} studentKey={viewStudentKey} goTo={goTo} />}
           {tab === "trash" && isSuperAdmin && <TrashView data={data} setData={setData} />}
           {tab === "datesheet" && <DatesheetView data={data} setData={setData} />}
@@ -263,7 +263,7 @@ export default function App() {
           {tab === "announcements" && <AnnouncementsView data={data} setData={setData} isAdmin={isAdmin} goTo={goTo} />}
           {tab === "progress" && <ProgressView data={data} setData={setData} isAdmin={isAdmin} />}
           {tab === "resources" && <ResourcesView data={data} setData={setData} />}
-          {tab === "settings" && <SettingsView data={data} setData={setData} goTo={goTo} />}
+          {tab === "settings" && <SettingsView data={data} setData={setData} goTo={goTo} refreshProfiles={refreshProfiles} />}
         </main>
       </div>
     </div>
