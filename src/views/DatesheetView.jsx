@@ -19,13 +19,23 @@ function DatesheetView({ data, setData }) {
   const fileRef = useRef();
   const [form, setForm] = useState({ title: "", examType: "ST", date: "", courseId: "" });
   const [pendingFile, setPendingFile] = useState(null);
+  const [uploadError, setUploadError] = useState("");
+  const [uploading, setUploading] = useState(false);
 
   const onFile = async (e) => {
     const f = e.target.files[0];
+    e.target.value = "";
     if (!f) return;
-    if (f.size > 25_000_000) { alert("File is too large (limit 25MB)."); setPendingFile({ name: f.name, type: f.type, dataUrl: null }); return; }
-    const { url: dataUrl } = await uploadAttachment(f); // "dataUrl" name kept for compatibility; it's a real Storage URL now
-    setPendingFile({ name: f.name, type: f.type, dataUrl });
+    if (f.size > 25_000_000) { alert("File is too large (limit 25MB)."); return; }
+    setUploadError(""); setUploading(true);
+    try {
+      const { url: dataUrl } = await uploadAttachment(f); // "dataUrl" name kept for compatibility; it's a real Storage URL now
+      setPendingFile({ name: f.name, type: f.type, dataUrl });
+    } catch (err) {
+      setUploadError(err.message || "Couldn't upload that file — try again.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const upload = () => {
@@ -84,10 +94,11 @@ function DatesheetView({ data, setData }) {
           </div>
           <label className="border border-dashed border-[#D8D2C2] rounded-lg flex flex-col items-center justify-center gap-1 py-6 cursor-pointer text-center mb-3 hover:bg-[#FAF6EF]">
             <Upload size={20} style={{ color: C.purple }} />
-            <span className="text-sm font-medium">{pendingFile ? pendingFile.name : "Upload Datesheet (PDF / Image)"}</span>
-            <span className="text-xs text-[#A79E8C]">Supported: PDF, JPG, PNG (max ~1MB)</span>
-            <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={onFile} />
+            <span className="text-sm font-medium">{uploading ? "Uploading…" : pendingFile ? pendingFile.name : "Upload Datesheet (PDF / Image)"}</span>
+            <span className="text-xs text-[#A79E8C]">Supported: PDF, JPG, PNG (max 25MB)</span>
+            <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={onFile} disabled={uploading} />
           </label>
+          {uploadError && <div className="text-xs mb-2" style={{ color: "#A6423A" }}>{uploadError}</div>}
           <button onClick={upload} className="text-sm text-white px-3 py-2 rounded-lg" style={{ background: C.purple }}>Save Datesheet</button>
         </Card>
 

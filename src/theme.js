@@ -28,5 +28,6 @@ const SEM_START = new Date("2026-07-20");
 const SEM_END = new Date("2026-12-27");
 
 const flatNav = (sections) => sections.flatMap((s) => s.items);
+const makeUnit = (id, name) => ({ id, name, done: false }); // shared shape for a course's syllabus unit/topic
 
-export { C, uid, isAdminKey, DEFAULT_DEPT_ID, deptName, deptOf, fmt, fmtFull, daysUntil, toMin, minToTime, MAX_FILE_BYTES, DAYS, HOURS, SEM_START, SEM_END, flatNav };
+export { C, uid, isAdminKey, DEFAULT_DEPT_ID, deptName, deptOf, fmt, fmtFull, daysUntil, toMin, minToTime, MAX_FILE_BYTES, DAYS, HOURS, SEM_START, SEM_END, flatNav, makeUnit };

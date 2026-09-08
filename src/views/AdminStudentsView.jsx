@@ -3,7 +3,7 @@ import {
   Users2, Trash2, Search, GraduationCap, Eye,
 } from "lucide-react";
 import {
-  C, isAdminKey, DEFAULT_DEPT_ID, deptName,
+  C, isAdminKey, deptName,
 } from "../theme";
 import {
   } from "../data/seedData";
@@ -23,9 +23,7 @@ function AdminStudentsView({ data, setData, onViewStudent, refreshProfiles }) {
   const studentKeys = useMemo(() => Object.keys(data.profiles).filter((k) => !isAdminKey(k, data.profiles)), [data.profiles]);
 
   const [deptTab, setDeptTab] = useState(isHOD ? myDeptId : "all");
-  const [newStudent, setNewStudent] = useState({ name: "", id: "", password: "", departmentId: isHOD ? myDeptId : (data.departments[0]?.id || DEFAULT_DEPT_ID) });
-  const [newStudentError, setNewStudentError] = useState("");
-  const [actionError, setActionError] = useState(""); // surfaces a failed deactivate/department-change instead of failing silently
+  const [actionError, setActionError] = useState(""); // surfaces a failed deactivate/reactivate/department-change instead of failing silently
   const [changingDept, setChangingDept] = useState(null); // student key whose department dropdown is mid-save
 
   const [search, setSearch] = useState("");
@@ -56,17 +54,17 @@ function AdminStudentsView({ data, setData, onViewStudent, refreshProfiles }) {
     return true;
   });
 
-  const addStudent = () => {
-    // Students now sign themselves up (real accounts) — admin can no longer mint a
-    // login here. This button assigns/reassigns an ALREADY-signed-up user's department.
-  };
+  // Students now sign themselves up (real accounts) — admin can no longer mint a login
+  // here; department assignment happens via the roster's per-row picker below instead.
+
 
   const performRemove = (key) => {
-    if (studentKeys.length <= 1) { setNewStudentError("At least one student account must remain."); setRemoveTarget(null); return; }
     // Deleting a real auth account needs Supabase's admin API (service-role key), which
     // must never live in frontend code — so "remove" here means deactivate: the account
     // can no longer sign in, but nothing is destroyed. A super-admin can permanently
     // delete the underlying auth user later from Supabase Dashboard → Authentication.
+    // (There's no minimum-student-count restriction — unlike departments/co-admins,
+    // nothing else in the app depends on at least one student account existing.)
     setActionError("");
     updateProfile(key, { active: false }).then(({ error }) => {
       if (error) {
@@ -77,6 +75,14 @@ function AdminStudentsView({ data, setData, onViewStudent, refreshProfiles }) {
       }
     });
     setRemoveTarget(null);
+  };
+
+  const reactivate = (key) => {
+    setActionError("");
+    updateProfile(key, { active: true }).then(({ error }) => {
+      if (error) setActionError(`Couldn't reactivate this account: ${error.message}`);
+      else { setData((d) => logActivity(d, `Student account reactivated: ${d.profiles[key]?.name || key}`)); refreshProfiles?.(); }
+    });
   };
 
   const changeDepartment = (key, departmentId) => {
@@ -149,16 +155,20 @@ function AdminStudentsView({ data, setData, onViewStudent, refreshProfiles }) {
             const profile = data.profiles[key] || { name: "Student", photo: null };
             const s = summaryFor(key);
             const manageable = canManageStudent(key);
+            const isInactive = profile.active === false;
             return (
-              <div key={key} className="border border-[#E6DFD1] rounded-lg p-3">
+              <div key={key} className="border rounded-lg p-3" style={isInactive ? { borderColor: "#E6DFD1", background: "#FAF7F1", opacity: 0.75 } : { borderColor: "#E6DFD1" }}>
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0 overflow-hidden" style={{ background: "#4F7A5B" }}>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0 overflow-hidden" style={{ background: isInactive ? "#A79E8C" : "#4F7A5B" }}>
                     {profile.photo
                       ? <img src={profile.photo} alt="" className="w-full h-full object-cover" />
                       : (profile.name || "?").slice(0, 1).toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium truncate" style={{ color: "#2B2620" }}>{profile.name || "Student"}</div>
+                    <div className="text-sm font-medium truncate flex items-center gap-1.5" style={{ color: "#2B2620" }}>
+                      {profile.name || "Student"}
+                      {isInactive && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: "#F1E1DC", color: "#A6423A" }}>Deactivated</span>}
+                    </div>
                     <div className="text-xs truncate" style={{ color: "#A79E8C" }}>{profile.email}</div>
                   </div>
                   {manageable && data.departments.length > 1 && (
@@ -172,9 +182,11 @@ function AdminStudentsView({ data, setData, onViewStudent, refreshProfiles }) {
                     </select>
                   )}
                   {manageable ? (
-                    <>
+                    isInactive ? (
+                      <button onClick={() => reactivate(key)} className="text-xs font-medium px-2.5 py-1 rounded-lg flex-shrink-0" style={{ background: "#EEF2E7", color: C.green }}>Reactivate</button>
+                    ) : (
                       <button onClick={() => setRemoveTarget(key)} className="text-[#D9D0BC] hover:text-[#A6423A] flex-shrink-0" title="Deactivate this student account"><Trash2 size={15} /></button>
-                    </>
+                    )
                   ) : (
                     <span className="text-[10px] flex-shrink-0" style={{ color: "#A79E8C" }}>view only</span>
                   )}

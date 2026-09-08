@@ -18,7 +18,7 @@ import { uploadAttachment } from "../lib/uploadAttachment";
 import { updateProfile } from "../lib/profileAdmin";
 import { supabase } from "../lib/supabaseClient";
 
-function SettingsView({ data, setData, goTo }) {
+function SettingsView({ data, setData, goTo, refreshProfiles, refreshProfile }) {
   const isAdmin = isAdminKey(data.session, data.profiles);
   const isSuperAdmin = data.profiles[data.session]?.role === "admin";
   const ownRole = data.session;
@@ -41,22 +41,29 @@ function SettingsView({ data, setData, goTo }) {
       const { url } = await uploadAttachment(file);
       const { error } = await updateProfile(ownRole, { photo: url });
       if (error) setPhotoError(error.message);
+      else refreshProfile?.(); // without this, your own new photo won't show anywhere until you log out and back in
     } catch (err) {
       setPhotoError(err.message || "Couldn't upload that image, try another one.");
     } finally {
       setPhotoBusy(false);
     }
   };
-  const removeOwnPhoto = () => updateProfile(ownRole, { photo: null });
+  const removeOwnPhoto = () => {
+    setPhotoError("");
+    updateProfile(ownRole, { photo: null }).then(({ error }) => {
+      if (error) setPhotoError(error.message);
+      else refreshProfile?.();
+    });
+  };
   const removeStudentPhoto = (key) => {
     updateProfile(key, { photo: null }).then(({ error }) => {
-      if (!error) setData((d) => logActivity(d, `Admin removed ${data.profiles[key]?.name || "student"}'s profile photo`));
+      if (!error) { setData((d) => logActivity(d, `Admin removed ${data.profiles[key]?.name || "student"}'s profile photo`)); refreshProfiles?.(); }
     });
   };
 
   const saveName = () => {
     updateProfile(ownRole, { name }).then(({ error }) => {
-      if (!error) { setNameSaved(true); setTimeout(() => setNameSaved(false), 1500); }
+      if (!error) { setNameSaved(true); refreshProfile?.(); setTimeout(() => setNameSaved(false), 1500); }
     });
   };
 

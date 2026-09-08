@@ -21,13 +21,23 @@ function ResourcesView({ data, setData }) {
   const [mode, setMode] = useState("file");
   const [form, setForm] = useState({ title: "", url: "", courseId: "" });
   const [pending, setPending] = useState(null);
+  const [uploadError, setUploadError] = useState("");
+  const [uploading, setUploading] = useState(false);
 
   const onFile = async (e) => {
     const f = e.target.files[0];
+    e.target.value = "";
     if (!f) return;
     if (f.size > 25_000_000) { alert("That file is larger than 25MB — please paste a link instead (e.g. Google Drive)."); return; }
-    const { url: dataUrl } = await uploadAttachment(f); // "dataUrl" name kept for compatibility; it's a real Storage URL now
-    setPending({ name: f.name, type: f.type, dataUrl });
+    setUploadError(""); setUploading(true);
+    try {
+      const { url: dataUrl } = await uploadAttachment(f); // "dataUrl" name kept for compatibility; it's a real Storage URL now
+      setPending({ name: f.name, type: f.type, dataUrl });
+    } catch (err) {
+      setUploadError(err.message || "Couldn't upload that file — try again.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const add = () => {
@@ -68,13 +78,14 @@ function ResourcesView({ data, setData }) {
         {mode === "file" ? (
           <label className="border border-dashed border-[#D8D2C2] rounded-lg flex flex-col items-center justify-center gap-1 py-6 cursor-pointer text-center hover:bg-[#FAF6EF]">
             <Upload size={20} style={{ color: C.purple }} />
-            <span className="text-sm font-medium">{pending ? pending.name : "Click to choose a file"}</span>
-            <span className="text-xs text-[#A79E8C]">PDF, PPT, DOC, XLS, images — up to ~1MB</span>
-            <input ref={fileRef} type="file" accept=".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.txt" className="hidden" onChange={onFile} />
+            <span className="text-sm font-medium">{uploading ? "Uploading…" : pending ? pending.name : "Click to choose a file"}</span>
+            <span className="text-xs text-[#A79E8C]">PDF, PPT, DOC, XLS, images — up to 25MB</span>
+            <input ref={fileRef} type="file" accept=".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.txt" className="hidden" onChange={onFile} disabled={uploading} />
           </label>
         ) : (
           <input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://…" className="border border-[#E6DFD1] rounded-lg px-3 py-2 text-sm w-full" />
         )}
+        {uploadError && <div className="text-xs mt-2" style={{ color: "#A6423A" }}>{uploadError}</div>}
         <button onClick={add} className="mt-3 flex items-center gap-1 text-sm text-white px-3 py-1.5 rounded-lg" style={{ background: C.purple }}><Plus size={14} /> Add resource</button>
       </Card>
 

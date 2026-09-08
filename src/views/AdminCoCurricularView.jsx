@@ -3,7 +3,7 @@ import {
   Plus, Trash2, X,
 } from "lucide-react";
 import {
-  C, uid, fmt,
+  C, uid, fmt, makeUnit,
 } from "../theme";
 import {
   } from "../data/seedData";
@@ -33,7 +33,7 @@ function AdminCoCurricularView({ data, setData }) {
   const addModule = (enrollId) => {
     const name = (newModule[enrollId] || "").trim();
     if (!name) return;
-    setData((d) => logActivity({ ...d, enrollments: d.enrollments.map((e) => e.id === enrollId ? { ...e, units: [...e.units, u(uid(), name)] } : e) }, `Module added to ${data.enrollments.find((e) => e.id === enrollId)?.name}: ${name}`));
+    setData((d) => logActivity({ ...d, enrollments: d.enrollments.map((e) => e.id === enrollId ? { ...e, units: [...e.units, makeUnit(uid(), name)] } : e) }, `Module added to ${data.enrollments.find((e) => e.id === enrollId)?.name}: ${name}`));
     setNewModule((s) => ({ ...s, [enrollId]: "" }));
   };
   const removeModule = (enrollId, unitId) => {

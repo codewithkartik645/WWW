@@ -5,6 +5,7 @@ import {
 import {
   C, isAdminKey, fmt,
 } from "../theme";
+import { TRASH_TYPE_META } from "../utils/trashMeta";
 import {
   } from "../data/seedData";
 import { logActivity, restoreFromTrash } from "../utils/activity";

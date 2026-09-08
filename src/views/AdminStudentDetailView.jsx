@@ -1,8 +1,8 @@
 import React, {} from "react";
 import {
-  CalendarDays, BookOpen, CalendarClock, ListChecks, Users2,
-  TrendingUp, FolderOpen, Trash2,
-  Check, ChevronLeft, Upload, GraduationCap, Megaphone, FileText,
+  ChevronLeft,
+  Users2, TrendingUp, ListChecks, CalendarClock,
+  Check, Trash2,
 } from "lucide-react";
 import {
   C, deptName, fmt,
@@ -168,23 +168,6 @@ function AdminStudentDetailView({ data, setData, studentKey, goTo }) {
 }
 
 /* ------------------------------ Trash / Restore ------------------------------ */
-
-const TRASH_TYPE_META = {
-  calendarEvent: { label: "Calendar event", icon: CalendarDays },
-  course: { label: "Subject", icon: BookOpen },
-  courseUnit: { label: "Unit", icon: BookOpen },
-  courseSyllabus: { label: "Syllabus", icon: FileText },
-  task: { label: "Task", icon: ListChecks },
-  plannerBlock: { label: "Timetable / planner block", icon: CalendarClock },
-  coCurricularCatalog: { label: "Co-curricular opportunity", icon: Users2 },
-  enrollment: { label: "Enrollment", icon: Users2 },
-  enrollmentModule: { label: "Module", icon: Users2 },
-  resource: { label: "Resource", icon: FolderOpen },
-  datesheet: { label: "Datesheet", icon: Upload },
-  announcement: { label: "Announcement", icon: Megaphone },
-  studyLog: { label: "Study log entry", icon: TrendingUp },
-  studentAccount: { label: "Account", icon: GraduationCap },
-};
 
 
 export default AdminStudentDetailView;

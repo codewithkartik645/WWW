@@ -122,7 +122,7 @@ function SaveErrorBanner({ error, onRetry }) {
 }
 
 export default function App() {
-  const { session, profile, loaded: authLoaded, signOut } = useAuth();
+  const { session, profile, loaded: authLoaded, signOut, refreshProfile } = useAuth();
   const { data: classroomData, setData, loaded: dataLoaded, saveError, retryNow, refreshProfiles } = useClassroomData(profile, session?.user?.id ?? null);
   const [tab, setTab] = useState("dashboard");
   const [query, setQuery] = useState("");
@@ -263,7 +263,7 @@ export default function App() {
           {tab === "announcements" && <AnnouncementsView data={data} setData={setData} isAdmin={isAdmin} goTo={goTo} />}
           {tab === "progress" && <ProgressView data={data} setData={setData} isAdmin={isAdmin} />}
           {tab === "resources" && <ResourcesView data={data} setData={setData} />}
-          {tab === "settings" && <SettingsView data={data} setData={setData} goTo={goTo} refreshProfiles={refreshProfiles} />}
+          {tab === "settings" && <SettingsView data={data} setData={setData} goTo={goTo} refreshProfiles={refreshProfiles} refreshProfile={refreshProfile} />}
         </main>
       </div>
     </div>

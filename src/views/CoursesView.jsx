@@ -3,7 +3,7 @@ import {
   Plus, Trash2, Upload, Download, Eye, X, FileText, EyeOff,
 } from "lucide-react";
 import {
-  C, uid, isAdminKey, DEFAULT_DEPT_ID, deptName,
+  C, uid, isAdminKey, DEFAULT_DEPT_ID, deptName, makeUnit,
 } from "../theme";
 import {
   } from "../data/seedData";
@@ -32,7 +32,7 @@ function CoursesView({ data, setData, editable }) {
   const addUnit = (courseId) => {
     const name = (newUnit[courseId] || "").trim();
     if (!name) return;
-    setData((d) => logActivity({ ...d, courses: d.courses.map((c) => c.id === courseId ? { ...c, units: [...c.units, u(uid(), name)] } : c) }, `Unit added to ${data.courses.find((c) => c.id === courseId)?.code}: ${name}`));
+    setData((d) => logActivity({ ...d, courses: d.courses.map((c) => c.id === courseId ? { ...c, units: [...c.units, makeUnit(uid(), name)] } : c) }, `Unit added to ${data.courses.find((c) => c.id === courseId)?.code}: ${name}`));
     setNewUnit((s) => ({ ...s, [courseId]: "" }));
   };
   const [confirmDelete, deleteModal] = useDeleteConfirm();
@@ -60,12 +60,18 @@ function CoursesView({ data, setData, editable }) {
     });
   };
 
+  const [syllabusErrors, setSyllabusErrors] = useState({}); // { [courseId]: message }
   const uploadSyllabus = async (courseId, file) => {
     if (!file) return;
     if (file.size > 25_000_000) { alert("That file is larger than 25MB — pick a smaller PDF."); return; }
-    const { url: dataUrl } = await uploadAttachment(file); // "dataUrl" name kept for compatibility; it's a real Storage URL now
-    const course = data.courses.find((c) => c.id === courseId);
-    setData((d) => logActivity({ ...d, courses: d.courses.map((c) => c.id === courseId ? { ...c, syllabus: { fileName: file.name, fileType: file.type, dataUrl } } : c) }, `Syllabus uploaded: ${course?.code}`));
+    setSyllabusErrors((s) => ({ ...s, [courseId]: "" }));
+    try {
+      const { url: dataUrl } = await uploadAttachment(file); // "dataUrl" name kept for compatibility; it's a real Storage URL now
+      const course = data.courses.find((c) => c.id === courseId);
+      setData((d) => logActivity({ ...d, courses: d.courses.map((c) => c.id === courseId ? { ...c, syllabus: { fileName: file.name, fileType: file.type, dataUrl } } : c) }, `Syllabus uploaded: ${course?.code}`));
+    } catch (err) {
+      setSyllabusErrors((s) => ({ ...s, [courseId]: err.message || "Couldn't upload that file — try again." }));
+    }
   };
   const removeSyllabus = (courseId) => {
     const course = data.courses.find((c) => c.id === courseId);
@@ -229,10 +235,13 @@ function CoursesView({ data, setData, editable }) {
                         </div>
                       </div>
                     ) : editable && canManageCourse(c) ? (
-                      <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: C.purple }}>
-                        <Upload size={13} /> Upload syllabus PDF
-                        <input type="file" accept="application/pdf" className="hidden" onChange={(e) => { uploadSyllabus(c.id, e.target.files[0]); e.target.value = ""; }} />
-                      </label>
+                      <div>
+                        <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: C.purple }}>
+                          <Upload size={13} /> Upload syllabus PDF
+                          <input type="file" accept="application/pdf" className="hidden" onChange={(e) => { uploadSyllabus(c.id, e.target.files[0]); e.target.value = ""; }} />
+                        </label>
+                        {syllabusErrors[c.id] && <div className="text-xs mt-1" style={{ color: "#A6423A" }}>{syllabusErrors[c.id]}</div>}
+                      </div>
                     ) : (
                       <div className="text-xs" style={{ color: "#A79E8C" }}>Not uploaded yet.</div>
                     )}

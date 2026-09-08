@@ -5,6 +5,7 @@ import {
 import {
   C, fmt, flatNav,
 } from "../theme";
+import { openAttachment, fileKindIcon } from "../utils/files";
 import {
   } from "../components/UI";
 

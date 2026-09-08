@@ -1,4 +1,4 @@
-import { C, uid, DEFAULT_DEPT_ID } from "../theme";
+import { C, uid, DEFAULT_DEPT_ID, makeUnit as u } from "../theme";
 
 /* ---------------------------------------------------------------- */
 /* Seed data — RKGIT Odd-Sem 2026-27 calendar + AKTU V-sem syllabus  */
@@ -6,7 +6,6 @@ import { C, uid, DEFAULT_DEPT_ID } from "../theme";
 const ELECTIVE_I_OPTIONS = ["Statistical Computing (BCS051)", "Data Analytics (BCS052)", "Computer Graphics (BCS053)", "Object Oriented System Design with C++ (BCS054)"];
 const ELECTIVE_II_OPTIONS = ["Machine Learning Techniques (BCS055)", "Application of Soft Computing (BCS056)", "Image Processing (BCS057)", "Data Warehousing & Data Mining (BCS058)"];
 const NON_CREDIT_OPTIONS = ["Constitution of India (BNC501)", "Essence of Indian Traditional Knowledge (BNC502)"];
-const u = (id, name) => ({ id, name, done: false });
 
 const INITIAL_COURSES_BASE = [
   { id: "bcs501", code: "BCS501", name: "Database Management System", credits: 4, category: "Core", color: C.purple,

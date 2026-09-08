@@ -20,13 +20,23 @@ function AnnouncementsView({ data, setData, isAdmin, goTo }) {
   const fileRef = useRef();
   const [form, setForm] = useState({ title: "", message: "" });
   const [pending, setPending] = useState(null); // { name, type, dataUrl }
+  const [uploadError, setUploadError] = useState("");
+  const [uploading, setUploading] = useState(false);
 
   const onFile = async (e) => {
     const f = e.target.files[0];
+    e.target.value = "";
     if (!f) return;
     if (f.size > 25_000_000) { alert("That file is larger than 25MB — try a smaller PDF or image."); return; }
-    const { url: dataUrl } = await uploadAttachment(f); // "dataUrl" name kept for compatibility; it's a real Storage URL now
-    setPending({ name: f.name, type: f.type, dataUrl });
+    setUploadError(""); setUploading(true);
+    try {
+      const { url: dataUrl } = await uploadAttachment(f); // "dataUrl" name kept for compatibility; it's a real Storage URL now
+      setPending({ name: f.name, type: f.type, dataUrl });
+    } catch (err) {
+      setUploadError(err.message || "Couldn't upload that file — try again.");
+    } finally {
+      setUploading(false);
+    }
   };
   const clearPending = () => { setPending(null); if (fileRef.current) fileRef.current.value = ""; };
 
@@ -65,10 +75,11 @@ function AnnouncementsView({ data, setData, isAdmin, goTo }) {
           ) : (
             <label className="border border-dashed border-[#D8D2C2] rounded-lg flex items-center justify-center gap-2 py-3 cursor-pointer text-center hover:bg-[#FAF6EF] mb-2">
               <Paperclip size={15} style={{ color: C.purple }} />
-              <span className="text-xs font-medium">Attach a PDF or image (optional)</span>
-              <input ref={fileRef} type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden" onChange={onFile} />
+              <span className="text-xs font-medium">{uploading ? "Uploading…" : "Attach a PDF or image (optional)"}</span>
+              <input ref={fileRef} type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden" onChange={onFile} disabled={uploading} />
             </label>
           )}
+          {uploadError && <div className="text-xs mb-2" style={{ color: "#A6423A" }}>{uploadError}</div>}
           <button onClick={add} className="text-sm text-white px-3 py-1.5 rounded-lg" style={{ background: C.purple }}>Publish</button>
         </Card>
       ) : (
