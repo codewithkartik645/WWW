@@ -3,7 +3,7 @@ import {
   Bell, Search, Megaphone, X, LogOut, Menu,
 } from "lucide-react";
 import {
-  C, fmt, flatNav,
+  C, fmt, flatNav, visibleAnnouncementsFor,
 } from "../theme";
 import { openAttachment, fileKindIcon } from "../utils/files";
 import {
@@ -23,9 +23,10 @@ function TopBar({ data, setData, tab, isAdmin, query, setQuery, goTo, navSection
     return out.slice(0, 6);
   }, [query, data, isAdmin]);
 
+  const myAnnouncements = useMemo(() => visibleAnnouncementsFor(data, data.session), [data]);
   const lastSeenCount = data.lastSeenAnnouncements?.[data.session] || 0;
-  const unread = Math.max(0, data.announcements.length - lastSeenCount);
-  const markSeen = () => setData((d) => ({ ...d, lastSeenAnnouncements: { ...d.lastSeenAnnouncements, [d.session]: d.announcements.length } }));
+  const unread = Math.max(0, myAnnouncements.length - lastSeenCount);
+  const markSeen = () => setData((d) => ({ ...d, lastSeenAnnouncements: { ...d.lastSeenAnnouncements, [d.session]: visibleAnnouncementsFor(d, d.session).length } }));
   const toggleAnnouncements = () => {
     setShowPanel((s) => {
       const next = !s;
@@ -33,7 +34,7 @@ function TopBar({ data, setData, tab, isAdmin, query, setQuery, goTo, navSection
       return next;
     });
   };
-  const recent = data.announcements.slice(0, 5);
+  const recent = myAnnouncements.slice(0, 5);
 
   return (
     <div className="mb-6">

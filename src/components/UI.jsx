@@ -3,7 +3,7 @@ import {
   Trash2, Download, Eye, X, EyeOff,
 } from "lucide-react";
 import {
-  C,
+  C, isDeptActive, activeDepartments,
 } from "../theme";
 import {
   fileKindIcon, openAttachment, registerAttachmentPreview,
@@ -229,4 +229,38 @@ function ResourceLine({ r }) {
 /* ------------------------------ Study Planner / College Classes (shared) ------------------------------ */
 
 
-export { Card, Badge, TypeBadge, ConfirmModal, useDeleteConfirm, PasswordInput, AttachmentActions, AttachmentPreviewModal, Donut, useStreak, weekLogHours, ResourceLine };
+// Consistent department-scope switcher used across every admin screen (Calendar,
+// Announcements, Resources, Co-curricular, etc). A Director sees a clickable strip of
+// tabs — "All Departments" plus one per department — and picking one scopes both what's
+// shown and what new items get tagged with. A department HOD never sees this at all:
+// they're always locked to their own department, so nothing renders here for them.
+function DepartmentScopeTabs({ data, isHOD, activeId, onChange, includeAll = true, includeInactive = false }) {
+  if (isHOD) return null;
+  const depts = includeInactive ? (data.departments || []) : activeDepartments(data);
+  if (depts.length <= 1 && !includeAll) return null;
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap mb-4">
+      {includeAll && (
+        <button
+          onClick={() => onChange("all")}
+          className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
+          style={activeId === "all" ? { background: C.purple, color: "#fff" } : { background: "#fff", color: C.sub, border: `1px solid ${C.border}` }}
+        >
+          All Departments
+        </button>
+      )}
+      {depts.map((dp) => (
+        <button
+          key={dp.id}
+          onClick={() => onChange(dp.id)}
+          className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
+          style={activeId === dp.id ? { background: C.purple, color: "#fff" } : { background: "#fff", color: C.sub, border: `1px solid ${C.border}` }}
+        >
+          {dp.name}{!isDeptActive(dp) ? " (inactive)" : ""}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export { Card, Badge, TypeBadge, ConfirmModal, useDeleteConfirm, PasswordInput, AttachmentActions, AttachmentPreviewModal, Donut, useStreak, weekLogHours, ResourceLine, DepartmentScopeTabs };

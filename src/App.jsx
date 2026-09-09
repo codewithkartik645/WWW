@@ -8,7 +8,7 @@ import {
 import { useAuth } from "./lib/useAuth";
 import { useClassroomData } from "./lib/useClassroomData";
 import AuthScreen from "./AuthScreen";
-import { C, isAdminKey, daysUntil } from "./theme";
+import { C, isAdminKey, daysUntil, visibleAnnouncementsFor } from "./theme";
 import { DEFAULT_SHARED_DATA } from "./data/seedData";
 import { logActivity, generateRecommendedBlocks } from "./utils/activity";
 import { ConfirmModal, AttachmentPreviewModal } from "./components/UI";
@@ -176,12 +176,12 @@ export default function App() {
   // the unread count stuck (and made the bell look broken).
   useEffect(() => {
     if (!data || !data.session || tab !== "announcements") return;
-    const count = data.announcements.length;
+    const count = visibleAnnouncementsFor(data, data.session).length;
     const seen = data.lastSeenAnnouncements?.[data.session] || 0;
     if (seen !== count) {
-      setData((d) => ({ ...d, lastSeenAnnouncements: { ...d.lastSeenAnnouncements, [d.session]: d.announcements.length } }));
+      setData((d) => ({ ...d, lastSeenAnnouncements: { ...d.lastSeenAnnouncements, [d.session]: visibleAnnouncementsFor(d, d.session).length } }));
     }
-  }, [tab, data?.session, data?.announcements?.length]);
+  }, [tab, data]);
 
   if (!authLoaded) return <LoadingScreen label="Loading your tracker…" />;
   if (!session || !profile) return <AuthScreen />;
@@ -257,12 +257,12 @@ export default function App() {
           {tab === "coadmins" && isAdmin && <CoAdminsView data={data} setData={setData} goTo={goTo} refreshProfiles={refreshProfiles} />}
           {tab === "student-detail" && isAdmin && <AdminStudentDetailView data={data} setData={setData} studentKey={viewStudentKey} goTo={goTo} />}
           {tab === "trash" && isSuperAdmin && <TrashView data={data} setData={setData} />}
-          {tab === "datesheet" && <DatesheetView data={data} setData={setData} />}
+          {tab === "datesheet" && isAdmin && <DatesheetView data={data} setData={setData} />}
           {tab === "timetables" && <TimetablesView data={data} setData={setData} />}
           {tab === "exams" && <ExamsView data={data} setData={setData} />}
           {tab === "announcements" && <AnnouncementsView data={data} setData={setData} isAdmin={isAdmin} goTo={goTo} />}
           {tab === "progress" && <ProgressView data={data} setData={setData} isAdmin={isAdmin} />}
-          {tab === "resources" && <ResourcesView data={data} setData={setData} />}
+          {tab === "resources" && <ResourcesView data={data} setData={setData} isAdmin={isAdmin} />}
           {tab === "settings" && <SettingsView data={data} setData={setData} goTo={goTo} refreshProfiles={refreshProfiles} refreshProfile={refreshProfile} />}
         </main>
       </div>

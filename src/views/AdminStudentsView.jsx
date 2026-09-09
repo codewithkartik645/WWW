@@ -3,7 +3,7 @@ import {
   Users2, Trash2, Search, GraduationCap, Eye,
 } from "lucide-react";
 import {
-  C, isAdminKey, deptName,
+  C, isAdminKey, deptName, activeDepartments,
 } from "../theme";
 import {
   } from "../data/seedData";
@@ -178,7 +178,8 @@ function AdminStudentsView({ data, setData, onViewStudent, refreshProfiles }) {
                       disabled={changingDept === key}
                       className="text-xs border border-[#E6DFD1] rounded-lg px-2 py-1 flex-shrink-0 disabled:opacity-50"
                     >
-                      {data.departments.map((dp) => <option key={dp.id} value={dp.id}>{dp.name}</option>)}
+                      {activeDepartments(data).some((dp) => dp.id === profile.departmentId) ? null : data.departments.filter((dp) => dp.id === profile.departmentId).map((dp) => <option key={dp.id} value={dp.id}>{dp.name} (inactive)</option>)}
+                      {activeDepartments(data).map((dp) => <option key={dp.id} value={dp.id}>{dp.name}</option>)}
                     </select>
                   )}
                   {manageable ? (

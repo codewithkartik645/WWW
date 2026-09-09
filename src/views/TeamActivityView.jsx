@@ -4,7 +4,7 @@ import {
   Shield, Search, GraduationCap, Eye, Activity,
 } from "lucide-react";
 import {
-  C, isAdminKey,
+  C, isAdminKey, deptName,
 } from "../theme";
 import {
   } from "../data/seedData";
@@ -16,7 +16,12 @@ import {
 
 function TeamActivityView({ data, setData, onViewStudent, goTo }) {
   const isSuperAdmin = data.profiles[data.session]?.role === "admin"; // only the original admin account manages co-admins
-  const studentKeys = useMemo(() => Object.keys(data.profiles).filter((k) => !isAdminKey(k, data.profiles)), [data.profiles]);
+  const isHOD = !isSuperAdmin;
+  const myDeptId = isHOD ? (data.profiles[data.session]?.departmentId || data.departments[0]?.id) : null;
+  const studentDeptId = (key) => data.profiles[key]?.departmentId || data.departments[0]?.id;
+
+  // An HOD only ever sees their own department's students here — never another department's workload.
+  const studentKeys = useMemo(() => Object.keys(data.profiles).filter((k) => !isAdminKey(k, data.profiles) && (!isHOD || studentDeptId(k) === myDeptId)), [data.profiles, isHOD, myDeptId]);
   const coAdminKeys = useMemo(() => Object.keys(data.profiles).filter((k) => isAdminKey(k, data.profiles) && data.profiles[k]?.role !== "admin"), [data.profiles]);
 
   const roleFor = (key) => (data.profiles[key]?.role === "admin" ? "Admin" : isAdminKey(key, data.profiles) ? "Co-admin" : "Student");
@@ -29,12 +34,16 @@ function TeamActivityView({ data, setData, onViewStudent, goTo }) {
 
   const filteredLog = useMemo(() => {
     return (data.activityLog || []).filter((a) => {
+      // An HOD only ever sees actions by themselves or by their own department's students —
+      // never another department's students, another co-admin, or the Director's own actions,
+      // since those could easily reference another department's private data in plain text.
+      if (isHOD && a.by !== data.session && !(!isAdminKey(a.by, data.profiles) && studentDeptId(a.by) === myDeptId)) return false;
       if (roleFilter !== "all" && roleFor(a.by) !== roleFilter) return false;
       if (userFilter !== "all" && a.by !== userFilter) return false;
       if (search.trim() && !a.text.toLowerCase().includes(search.trim().toLowerCase())) return false;
       return true;
     });
-  }, [data.activityLog, roleFilter, userFilter, search]);
+  }, [data.activityLog, data.profiles, isHOD, myDeptId, roleFilter, userFilter, search]);
 
   const summaryFor = (key) => {
     const enrollCount = data.enrollments.filter((e) => e.ownerKey === key).length;
@@ -68,11 +77,12 @@ function TeamActivityView({ data, setData, onViewStudent, goTo }) {
               <option value="all">Everyone</option>
               {Object.keys(data.profiles)
                 .filter((k) => roleFilter === "all" || roleFor(k) === roleFilter)
+                .filter((k) => !isHOD || k === data.session || (!isAdminKey(k, data.profiles) && studentDeptId(k) === myDeptId))
                 .map((k) => <option key={k} value={k}>{nameFor(k)}</option>)}
             </select>
           </div>
         </div>
-        <p className="text-xs mb-3" style={{ color: "#A79E8C" }}>Every action taken across the tracker, most recent first — admin, co-admins and students.</p>
+        <p className="text-xs mb-3" style={{ color: "#A79E8C" }}>{isHOD ? `Actions by you and your department's students, most recent first.` : "Every action taken across the tracker, most recent first — admin, co-admins and students."}</p>
         <div className="space-y-2 max-h-96 overflow-y-auto">
           {filteredLog.map((a) => (
             <div key={a.id} className="flex items-start justify-between gap-2 text-xs border-b border-[#F4EEE1] pb-2 last:border-0">
@@ -91,7 +101,7 @@ function TeamActivityView({ data, setData, onViewStudent, goTo }) {
 
       <Card>
         <div className="flex items-center justify-between gap-2 mb-1">
-          <div className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "#2B2620" }}><GraduationCap size={13} /> STUDENT WORKLOAD ({studentKeys.length})</div>
+          <div className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "#2B2620" }}><GraduationCap size={13} /> STUDENT WORKLOAD ({studentKeys.length}){isHOD && <span className="font-normal normal-case" style={{ color: "#A79E8C" }}> · {deptName(data, myDeptId)}</span>}</div>
           {goTo && <button onClick={() => goTo("students")} className="text-xs font-medium flex items-center gap-1" style={{ color: C.purple }}><Users2 size={12} /> Manage Students</button>}
         </div>
         <p className="text-xs mb-4" style={{ color: "#A79E8C" }}>Every student's work in one place — tasks, self-study and enrollments — without opening each account.</p>
@@ -121,33 +131,35 @@ function TeamActivityView({ data, setData, onViewStudent, goTo }) {
         </div>
       </Card>
 
-      <Card>
-        <div className="flex items-center justify-between gap-2 mb-1">
-          <div className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "#2B2620" }}><Shield size={13} /> CO-ADMIN ACTIVITY ({coAdminKeys.length})</div>
-          {goTo && isSuperAdmin && <button onClick={() => goTo("coadmins")} className="text-xs font-medium flex items-center gap-1" style={{ color: C.purple }}><Shield size={12} /> Manage Co-Admins</button>}
-        </div>
-        <p className="text-xs mb-4" style={{ color: "#A79E8C" }}>How active each co-admin has been{isSuperAdmin ? " — open Co-Admins to see their full action-by-action log or remove access." : "."}</p>
-        <div className="space-y-2">
-          {coAdminKeys.map((key) => {
-            const profile = data.profiles[key] || { name: "Co-admin", photo: null };
-            const count = activityCountFor(key);
-            const last = lastActiveFor(key);
-            return (
-              <div key={key} className="border border-[#E6DFD1] rounded-lg p-3 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 overflow-hidden" style={{ background: C.purple }}>
-                  {profile.photo ? <img src={profile.photo} alt="" className="w-full h-full object-cover" /> : (profile.name || "?").slice(0, 1).toUpperCase()}
+      {isSuperAdmin && (
+        <Card>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "#2B2620" }}><Shield size={13} /> CO-ADMIN ACTIVITY ({coAdminKeys.length})</div>
+            {goTo && <button onClick={() => goTo("coadmins")} className="text-xs font-medium flex items-center gap-1" style={{ color: C.purple }}><Shield size={12} /> Manage Co-Admins</button>}
+          </div>
+          <p className="text-xs mb-4" style={{ color: "#A79E8C" }}>How active each co-admin has been — open Co-Admins to see their full action-by-action log or remove access.</p>
+          <div className="space-y-2">
+            {coAdminKeys.map((key) => {
+              const profile = data.profiles[key] || { name: "Co-admin", photo: null };
+              const count = activityCountFor(key);
+              const last = lastActiveFor(key);
+              return (
+                <div key={key} className="border border-[#E6DFD1] rounded-lg p-3 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 overflow-hidden" style={{ background: C.purple }}>
+                    {profile.photo ? <img src={profile.photo} alt="" className="w-full h-full object-cover" /> : (profile.name || "?").slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium truncate" style={{ color: "#2B2620" }}>{profile.name || "Co-admin"}</div>
+                    <div className="text-xs" style={{ color: "#A79E8C" }}>{last ? `Last active ${new Date(last.ts).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : "No activity yet"}</div>
+                  </div>
+                  <Badge color={C.purple}>{count} action{count === 1 ? "" : "s"}</Badge>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium truncate" style={{ color: "#2B2620" }}>{profile.name || "Co-admin"}</div>
-                  <div className="text-xs" style={{ color: "#A79E8C" }}>{last ? `Last active ${new Date(last.ts).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : "No activity yet"}</div>
-                </div>
-                <Badge color={C.purple}>{count} action{count === 1 ? "" : "s"}</Badge>
-              </div>
-            );
-          })}
-          {coAdminKeys.length === 0 && <div className="text-sm" style={{ color: "#A79E8C" }}>No co-admins yet.</div>}
-        </div>
-      </Card>
+              );
+            })}
+            {coAdminKeys.length === 0 && <div className="text-sm" style={{ color: "#A79E8C" }}>No co-admins yet.</div>}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

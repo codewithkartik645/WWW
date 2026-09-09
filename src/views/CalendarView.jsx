@@ -3,7 +3,7 @@ import {
   Trash2, ChevronLeft, ChevronRight, Upload, X, FileText,
 } from "lucide-react";
 import {
-  C, uid, fmt, DAYS,
+  C, uid, fmt, DAYS, deptName, activeDepartments,
 } from "../theme";
 import {
   } from "../data/seedData";
@@ -12,18 +12,38 @@ import {
   } from "../utils/files";
 import { parseCalendarPdf } from "../utils/pdfImport";
 import {
-  Card, TypeBadge, useDeleteConfirm,
+  Card, TypeBadge, useDeleteConfirm, DepartmentScopeTabs,
 } from "../components/UI";
 
 function CalendarView({ data, setData, editable }) {
+  const myProfile = data.profiles[data.session];
+  const isDirector = editable && myProfile?.role === "admin";
+  const isHOD = editable && myProfile?.role === "coadmin";
+  const myDeptId = isHOD ? (myProfile?.departmentId || data.departments[0]?.id) : null;
+  const hasDepts = data.departments.length > 1;
+  const myStudentDeptId = !editable ? (myProfile?.departmentId || data.departments[0]?.id) : null;
+
   const [cursor, setCursor] = useState(new Date());
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState({ title: "", date: "", type: "milestone" });
+  const [postTo, setPostTo] = useState(isHOD ? myDeptId : "all"); // which department a NEW event/import is tagged with
+  const [viewTab, setViewTab] = useState(isHOD ? myDeptId : "all"); // which department's calendar the Director is currently looking at
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
   const [draftEvents, setDraftEvents] = useState(null); // null = no review panel open
   const [draftFileName, setDraftFileName] = useState("");
   const pdfInputRef = useRef(null);
+
+  // Own department's events + every campus-wide one (departmentId left null, e.g. national
+  // holidays or semester-wide milestones). The Director can narrow further with viewTab.
+  const visibleEvents = data.calendarEvents.filter((e) => {
+    if (!editable) return !e.departmentId || e.departmentId === myStudentDeptId;
+    if (isHOD) return !e.departmentId || e.departmentId === myDeptId;
+    if (viewTab === "all") return true;
+    return e.departmentId === viewTab;
+  });
+  // An HOD may only remove their own department's events — never a campus-wide one the Director posted.
+  const canManageEvent = (e) => isDirector || (isHOD && e.departmentId === myDeptId);
 
   const year = cursor.getFullYear(), month = cursor.getMonth();
   const first = new Date(year, month, 1);
@@ -33,10 +53,10 @@ function CalendarView({ data, setData, editable }) {
   const dateKey = (day) => `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   const todayKey = new Date().toISOString().slice(0, 10);
   const eventsOn = (key) => [
-    ...data.calendarEvents.filter((e) => e.date === key),
+    ...visibleEvents.filter((e) => e.date === key),
     ...data.tasks.filter((t) => t.due === key).map((t) => ({ date: key, title: t.title, type: "task" })),
   ];
-  const monthEvents = data.calendarEvents.filter((e) => e.date.startsWith(`${year}-${String(month + 1).padStart(2, "0")}`));
+  const monthEvents = visibleEvents.filter((e) => e.date.startsWith(`${year}-${String(month + 1).padStart(2, "0")}`));
   const shownDate = selected || (monthEvents[0]?.date ?? dateKey(1));
   const shownEvents = eventsOn(shownDate);
   const examCount = monthEvents.filter((e) => e.type === "exam").length;
@@ -46,7 +66,8 @@ function CalendarView({ data, setData, editable }) {
 
   const addEvent = () => {
     if (!form.title.trim() || !form.date) return;
-    setData((d) => logActivity({ ...d, calendarEvents: [...d.calendarEvents, { id: uid(), ...form }] }, `Event added: ${form.title}`));
+    const departmentId = isHOD ? myDeptId : (postTo === "all" ? null : postTo);
+    setData((d) => logActivity({ ...d, calendarEvents: [...d.calendarEvents, { id: uid(), ...form, departmentId }] }, `Event added${departmentId ? ` (${deptName(d, departmentId)})` : " (all departments)"}: ${form.title}`));
     setForm({ title: "", date: "", type: "milestone" });
   };
   const [confirmDelete, deleteModal] = useDeleteConfirm();
@@ -81,10 +102,11 @@ function CalendarView({ data, setData, editable }) {
   const confirmImport = () => {
     const chosen = draftEvents.filter((ev) => ev.include && ev.title.trim() && ev.date);
     if (chosen.length === 0) { setDraftEvents(null); return; }
+    const departmentId = isHOD ? myDeptId : (postTo === "all" ? null : postTo);
     const existing = new Set(data.calendarEvents.map((ev) => `${ev.date}|${ev.title.trim().toLowerCase()}`));
     const toAdd = chosen
       .filter((ev) => !existing.has(`${ev.date}|${ev.title.trim().toLowerCase()}`))
-      .map((ev) => ({ id: uid(), date: ev.date, title: ev.title.trim(), type: ev.type }));
+      .map((ev) => ({ id: uid(), date: ev.date, title: ev.title.trim(), type: ev.type, departmentId }));
     setData((d) => logActivity({ ...d, calendarEvents: [...d.calendarEvents, ...toAdd] }, `Imported ${toAdd.length} event(s) from ${draftFileName}`));
     setDraftEvents(null);
     setDraftFileName("");
@@ -93,6 +115,11 @@ function CalendarView({ data, setData, editable }) {
   return (
     <div className="grid lg:grid-cols-[1fr_300px] gap-4 items-start">
       {deleteModal}
+      {isDirector && (
+        <div className="lg:col-span-2">
+          <DepartmentScopeTabs data={data} isHOD={false} activeId={viewTab} onChange={setViewTab} includeInactive />
+        </div>
+      )}
       <Card className="max-w-md mx-auto lg:mx-0 w-full">
         <div className="flex items-center justify-between mb-1">
           <button onClick={() => setCursor(new Date(year, month - 1, 1))} className="p-1.5 rounded-lg hover:bg-[#F1E5E4] transition-colors"><ChevronLeft size={16} /></button>
@@ -151,9 +178,19 @@ function CalendarView({ data, setData, editable }) {
               <div key={i} className="flex items-start justify-between gap-2">
                 <div className="flex items-start gap-2">
                   <span className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ background: typeDot(e.type) }} />
-                  <div><div className="text-sm">{e.title}</div>{e.type !== "task" && <TypeBadge type={e.type} />}</div>
+                  <div>
+                    <div className="text-sm flex items-center gap-1.5 flex-wrap">
+                      {e.title}
+                      {editable && hasDepts && e.id && (
+                        <span className="text-[9.5px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: e.departmentId ? "#F6F0E4" : "#EAEEF0", color: e.departmentId ? "#6E6455" : "#2C4A63" }}>
+                          {e.departmentId ? deptName(data, e.departmentId) : "All Depts"}
+                        </span>
+                      )}
+                    </div>
+                    {e.type !== "task" && <TypeBadge type={e.type} />}
+                  </div>
                 </div>
-                {editable && e.id && <button onClick={() => confirmDelete(`Calendar event "${e.title}"`, () => removeEvent(e.id))} className="text-[#D9D0BC] hover:text-[#A6423A]"><Trash2 size={13} /></button>}
+                {editable && e.id && canManageEvent(e) && <button onClick={() => confirmDelete(`Calendar event "${e.title}"`, () => removeEvent(e.id))} className="text-[#D9D0BC] hover:text-[#A6423A]"><Trash2 size={13} /></button>}
               </div>
             ))}
           </div>
@@ -162,6 +199,17 @@ function CalendarView({ data, setData, editable }) {
         {editable && (
           <Card>
             <div className="font-h font-semibold text-sm mb-2">Add event</div>
+            {isHOD && hasDepts && (
+              <div className="text-xs mb-2 px-2.5 py-1.5 rounded-lg w-fit" style={{ background: "#F6F0E4", color: "#6E6455" }}>
+                For <b>{deptName(data, myDeptId)}</b> only
+              </div>
+            )}
+            {isDirector && hasDepts && (
+              <select value={postTo} onChange={(e) => setPostTo(e.target.value)} className="border border-[#E6DFD1] rounded-lg px-2 py-1.5 text-sm w-full mb-2">
+                <option value="all">All Departments</option>
+                {activeDepartments(data).map((dp) => <option key={dp.id} value={dp.id}>{dp.name} only</option>)}
+              </select>
+            )}
             <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Title" className="border border-[#E6DFD1] rounded-lg px-3 py-2 text-sm w-full mb-2" />
             <div className="flex gap-2 mb-2">
               <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="border border-[#E6DFD1] rounded-lg px-2 py-2 text-sm flex-1" />
@@ -176,7 +224,7 @@ function CalendarView({ data, setData, editable }) {
         {editable && (
           <Card style={{ borderLeft: `3px solid ${C.purple}` }}>
             <div className="font-h font-semibold text-sm mb-1 flex items-center gap-1.5"><FileText size={14} /> Import academic calendar (PDF)</div>
-            <p className="text-xs mb-3" style={{ color: "#A79E8C" }}>Upload the official PDF — dates and events are auto-detected. You'll review, edit, or remove anything before it's added, and can keep editing normally after.</p>
+            <p className="text-xs mb-3" style={{ color: "#A79E8C" }}>Upload the official PDF — dates and events are auto-detected. You'll review, edit, or remove anything before it's added, and can keep editing normally after.{isDirector && hasDepts ? " Imported events use whichever department is selected above (\"Add event\")." : ""}</p>
             <input ref={pdfInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={onPdfSelected} />
             <button onClick={() => pdfInputRef.current?.click()} disabled={importing}
               className="text-sm px-3 py-1.5 rounded-lg border flex items-center gap-1.5 disabled:opacity-60" style={{ borderColor: C.purple, color: C.purple }}>

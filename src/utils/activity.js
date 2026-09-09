@@ -57,7 +57,13 @@ function restoreFromTrash(d, entryId) {
 function generateRecommendedBlocks(datesheet, courses, existingBlocks) {
   if (!datesheet?.date) return [];
   const examDate = new Date(datesheet.date);
-  const pool = (datesheet.courseId ? courses.filter((c) => c.id === datesheet.courseId) : courses.filter((c) => c.category === "Core" || c.category.startsWith("Elective")));
+  // When no specific subject was picked, only rotate through this datesheet's own department's
+  // core/elective subjects — otherwise a revision block could get generated from an entirely
+  // different department's course list.
+  const deptId = datesheet.departmentId;
+  const pool = datesheet.courseId
+    ? courses.filter((c) => c.id === datesheet.courseId)
+    : courses.filter((c) => (c.category === "Core" || c.category.startsWith("Elective")) && (!deptId || c.departmentId === deptId));
   const ranked = [...pool].sort((a, b) => {
     const pa = a.units.length ? a.units.filter((x) => x.done).length / a.units.length : 0;
     const pb = b.units.length ? b.units.filter((x) => x.done).length / b.units.length : 0;
@@ -94,7 +100,7 @@ function generateRecommendedBlocks(datesheet, courses, existingBlocks) {
       id: uid(), day: dayName, start, end,
       label: i === 1 ? `${course.code} — full revision` : `${course.code} revision`,
       courseId: course.id, color: course.color, kind: "recommended",
-      sourceId: datesheet.id, examDate: datesheet.date,
+      sourceId: datesheet.id, examDate: datesheet.date, departmentId: course.departmentId,
     };
     blocks.push(newBlock);
     byDay[dayName] = [...dayBlocks, newBlock]; // account for it in later iterations too

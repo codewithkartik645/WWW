@@ -5,7 +5,7 @@ import {
   Building2,
 } from "lucide-react";
 import {
-  C, uid, isAdminKey, DEFAULT_DEPT_ID, deptName,
+  C, uid, isAdminKey, DEFAULT_DEPT_ID, deptName, activeDepartments,
 } from "../theme";
 import {
   } from "../data/seedData";
@@ -26,7 +26,7 @@ function CoAdminsView({ data, setData, goTo, refreshProfiles }) {
   const activityFor = (key) => (data.activityLog || []).filter((a) => a.by === key).slice(0, 20);
   const [confirmDelete, deleteModal] = useDeleteConfirm();
   const [promoteKey, setPromoteKey] = useState("");
-  const [promoteDept, setPromoteDept] = useState(data.departments[0]?.id || DEFAULT_DEPT_ID);
+  const [promoteDept, setPromoteDept] = useState(activeDepartments(data)[0]?.id || DEFAULT_DEPT_ID);
   const [promoteError, setPromoteError] = useState("");
   const [actionError, setActionError] = useState("");
 
@@ -38,16 +38,24 @@ function CoAdminsView({ data, setData, goTo, refreshProfiles }) {
     const name = newDeptName.trim();
     if (!name) return;
     if (data.departments.some((dp) => dp.name.toLowerCase() === name.toLowerCase())) { setDeptError("A department with that name already exists."); return; }
-    const dept = { id: `dept_${uid()}`, name };
+    const dept = { id: `dept_${uid()}`, name, active: true };
     setData((d) => logActivity({ ...d, departments: [...d.departments, dept] }, `Department added: ${name}`));
     setNewDeptName("");
   };
   const renameDepartment = (id, name) => setData((d) => ({ ...d, departments: d.departments.map((dp) => dp.id === id ? { ...dp, name } : dp) }));
+  const toggleDepartmentActive = (id) => {
+    const dept = data.departments.find((dp) => dp.id === id);
+    const nowActive = dept?.active === false;
+    setData((d) => logActivity(
+      { ...d, departments: d.departments.map((dp) => dp.id === id ? { ...dp, active: nowActive } : dp) },
+      `Department ${nowActive ? "reactivated" : "deactivated"}: ${dept?.name}`
+    ));
+  };
   const removeDepartment = (id) => {
     const dept = data.departments.find((dp) => dp.id === id);
     const inUse = data.courses.some((c) => (c.departmentId || data.departments[0]?.id) === id)
       || Object.keys(data.profiles).some((k) => data.profiles[k]?.departmentId === id);
-    if (inUse) { setDeptError(`"${dept?.name}" still has subjects, students or an HOD assigned — reassign them first.`); return; }
+    if (inUse) { setDeptError(`"${dept?.name}" still has subjects, students or an HOD assigned — reassign them first, or deactivate it instead of deleting.`); return; }
     if (data.departments.length <= 1) { setDeptError("At least one department must remain."); return; }
     setDeptError("");
     confirmDelete(`Department "${dept?.name}"`, () => {
@@ -108,17 +116,23 @@ function CoAdminsView({ data, setData, goTo, refreshProfiles }) {
             const hod = coAdminKeys.find((k) => data.profiles[k]?.departmentId === dp.id);
             const courseCount = data.courses.filter((c) => (c.departmentId || data.departments[0]?.id) === dp.id).length;
             const studentCount = Object.keys(data.profiles).filter((k) => !isAdminKey(k, data.profiles) && data.profiles[k]?.departmentId === dp.id).length;
+            const inactive = dp.active === false;
             return (
-              <div key={dp.id} className="flex items-center gap-2 flex-wrap border border-[#E6DFD1] rounded-lg px-3 py-2">
+              <div key={dp.id} className="flex items-center gap-2 flex-wrap border rounded-lg px-3 py-2" style={{ borderColor: inactive ? "#D9D0BC" : "#E6DFD1", background: inactive ? "#F6F0E4" : "transparent", opacity: inactive ? 0.75 : 1 }}>
                 <input value={dp.name} onChange={(e) => renameDepartment(dp.id, e.target.value)} className="flex-1 min-w-[120px] text-sm bg-transparent" style={{ color: "#2B2620" }} />
+                {inactive && <span className="text-[10px] px-2 py-0.5 rounded-full flex-shrink-0 text-white" style={{ background: "#A6423A" }}>Inactive</span>}
                 <span className="text-[10px] px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: "#F6F0E4", color: "#6E6455" }}>{courseCount} subj · {studentCount} stu</span>
                 <span className="text-[10px] flex-shrink-0" style={{ color: "#A79E8C" }}>{hod ? `HOD: ${data.profiles[hod]?.name}` : "No HOD yet"}</span>
-                <button onClick={() => removeDepartment(dp.id)} className="text-[#D9D0BC] hover:text-[#A6423A] flex-shrink-0" title="Remove department"><Trash2 size={13} /></button>
+                <button onClick={() => toggleDepartmentActive(dp.id)} className="text-[10px] font-medium px-2 py-1 rounded-md flex-shrink-0" style={{ color: inactive ? C.green : "#9C6B24", background: inactive ? "#EEF2E7" : "#F5E9CC" }}>
+                  {inactive ? "Reactivate" : "Deactivate"}
+                </button>
+                <button onClick={() => removeDepartment(dp.id)} className="text-[#D9D0BC] hover:text-[#A6423A] flex-shrink-0" title="Permanently delete department"><Trash2 size={13} /></button>
               </div>
             );
           })}
         </div>
         {deptError && <div className="text-xs mb-2" style={{ color: "#A6423A" }}>{deptError}</div>}
+        <p className="text-xs mb-2" style={{ color: "#A79E8C" }}><b>Deactivate</b> hides a department from new assignments while keeping its existing students, subjects and data intact. <b>Delete</b> permanently removes it, and only works once it's empty.</p>
         <div className="flex gap-2">
           <input value={newDeptName} onChange={(e) => setNewDeptName(e.target.value)} placeholder="e.g. Electronics & Communication" className="flex-1 border border-[#E6DFD1] rounded-lg px-2 py-1.5 text-sm" />
           <button onClick={addDepartment} className="text-xs px-3 py-1.5 rounded-lg text-white flex items-center gap-1.5 flex-shrink-0" style={{ background: "#2C4A63" }}><Plus size={13} /> Add dept</button>
@@ -152,7 +166,8 @@ function CoAdminsView({ data, setData, goTo, refreshProfiles }) {
                 <div className="mb-1">
                   <div className="text-[11px] font-medium mb-1" style={{ color: "#6E6455" }}>Department (HOD of)</div>
                   <select value={profile.departmentId || data.departments[0]?.id || ""} onChange={(e) => setCoAdminDept(key, e.target.value)} className="border border-[#E6DFD1] rounded-lg px-2 py-1.5 text-sm w-full">
-                    {data.departments.map((dp) => <option key={dp.id} value={dp.id}>{dp.name}</option>)}
+                    {activeDepartments(data).some((dp) => dp.id === profile.departmentId) ? null : data.departments.filter((dp) => dp.id === profile.departmentId).map((dp) => <option key={dp.id} value={dp.id}>{dp.name} (inactive)</option>)}
+                    {activeDepartments(data).map((dp) => <option key={dp.id} value={dp.id}>{dp.name}</option>)}
                   </select>
                 </div>
                 {isOpen && (
@@ -180,7 +195,7 @@ function CoAdminsView({ data, setData, goTo, refreshProfiles }) {
             {studentKeys.map((k) => <option key={k} value={k}>{data.profiles[k]?.name || "Unnamed"} ({data.profiles[k]?.email})</option>)}
           </select>
           <select value={promoteDept} onChange={(e) => setPromoteDept(e.target.value)} className="border border-[#E6DFD1] rounded-lg px-2 py-1.5 text-sm w-full mb-2">
-            {data.departments.map((dp) => <option key={dp.id} value={dp.id}>{dp.name}</option>)}
+            {activeDepartments(data).map((dp) => <option key={dp.id} value={dp.id}>{dp.name}</option>)}
           </select>
           {promoteError && <div className="text-xs mb-2" style={{ color: "#A6423A" }}>{promoteError}</div>}
           <button onClick={promoteToCoAdmin} className="text-xs px-3 py-1.5 rounded-lg text-white flex items-center gap-1.5" style={{ background: C.green }}><Plus size={13} /> Promote to co-admin</button>

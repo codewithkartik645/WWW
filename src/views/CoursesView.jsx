@@ -3,7 +3,7 @@ import {
   Plus, Trash2, Upload, Download, Eye, X, FileText, EyeOff,
 } from "lucide-react";
 import {
-  C, uid, isAdminKey, DEFAULT_DEPT_ID, deptName, makeUnit,
+  C, uid, isAdminKey, DEFAULT_DEPT_ID, deptName, makeUnit, activeDepartments,
 } from "../theme";
 import {
   } from "../data/seedData";
@@ -25,7 +25,7 @@ function CoursesView({ data, setData, editable }) {
   const [deptTab, setDeptTab] = useState(isHOD ? myDeptId : "all");
   const [newUnit, setNewUnit] = useState({});
   const [semesterInput, setSemesterInput] = useState(data.semester);
-  const [newSubject, setNewSubject] = useState({ code: "", name: "", credits: 3, category: "Core", departmentId: isHOD ? myDeptId : (data.departments[0]?.id || DEFAULT_DEPT_ID) });
+  const [newSubject, setNewSubject] = useState({ code: "", name: "", credits: 3, category: "Core", departmentId: isHOD ? myDeptId : (activeDepartments(data)[0]?.id || data.departments[0]?.id || DEFAULT_DEPT_ID) });
 
   const toggleTopic = (courseId, unitId) => setData((d) => ({ ...d, courses: d.courses.map((c) => c.id !== courseId ? c : { ...c, units: c.units.map((u) => u.id === unitId ? { ...u, done: !u.done } : u) }) }));
   const setElective = (courseId, name) => setData((d) => ({ ...d, courses: d.courses.map((c) => c.id === courseId ? { ...c, name } : c) }));
@@ -144,7 +144,7 @@ function CoursesView({ data, setData, editable }) {
             </select>
             {isDirector && data.departments.length > 1 && (
               <select value={newSubject.departmentId} onChange={(e) => setNewSubject({ ...newSubject, departmentId: e.target.value })} className="border border-[#E6DFD1] rounded-lg px-2 py-2 text-sm sm:col-span-2">
-                {data.departments.map((dp) => <option key={dp.id} value={dp.id}>{dp.name}</option>)}
+                {activeDepartments(data).map((dp) => <option key={dp.id} value={dp.id}>{dp.name}</option>)}
               </select>
             )}
           </div>

@@ -30,4 +30,20 @@ const SEM_END = new Date("2026-12-27");
 const flatNav = (sections) => sections.flatMap((s) => s.items);
 const makeUnit = (id, name) => ({ id, name, done: false }); // shared shape for a course's syllabus unit/topic
 
-export { C, uid, isAdminKey, DEFAULT_DEPT_ID, deptName, deptOf, fmt, fmtFull, daysUntil, toMin, minToTime, MAX_FILE_BYTES, DAYS, HOURS, SEM_START, SEM_END, flatNav, makeUnit };
+// A department without an explicit `active` flag (e.g. seeded before this feature existed)
+// is treated as active, so existing installs aren't silently affected.
+const isDeptActive = (dept) => dept?.active !== false;
+const activeDepartments = (data) => (data.departments || []).filter(isDeptActive);
+
+// Announcements a given profile is allowed to see: their own department's notices, plus
+// every campus-wide one (departmentId left null/undefined). The Director sees everything,
+// since they oversee every department. Shared by AnnouncementsView, the bell dropdown, and
+// the unread-count badge so all three always agree on the same number.
+const visibleAnnouncementsFor = (data, key) => {
+  const profile = data.profiles?.[key];
+  if (profile?.role === "admin") return data.announcements; // Director oversees every department
+  const myDeptId = profile?.departmentId || data.departments?.[0]?.id;
+  return (data.announcements || []).filter((a) => !a.departmentId || a.departmentId === myDeptId);
+};
+
+export { C, uid, isAdminKey, DEFAULT_DEPT_ID, deptName, deptOf, fmt, fmtFull, daysUntil, toMin, minToTime, MAX_FILE_BYTES, DAYS, HOURS, SEM_START, SEM_END, flatNav, makeUnit, isDeptActive, activeDepartments, visibleAnnouncementsFor };

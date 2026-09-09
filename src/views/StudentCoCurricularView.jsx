@@ -16,8 +16,11 @@ import {
 
 function StudentCoCurricularView({ data, setData }) {
   const [custom, setCustom] = useState({ name: "", provider: "Other" });
+  const myDeptId = data.profiles[data.session]?.departmentId || data.departments[0]?.id;
   // Only this student's own enrollments — enrollments used to be global and visible to every student.
   const myEnrollments = data.enrollments.filter((e) => !e.ownerKey || e.ownerKey === data.session);
+  // Only opportunities posted for this student's own department, plus every campus-wide one.
+  const visibleCatalog = data.coCurricularCatalog.filter((c) => !c.departmentId || c.departmentId === myDeptId);
 
   const enroll = (catalogItem) => {
     if (myEnrollments.some((e) => e.catalogId === catalogItem?.id || (custom.name && e.name === custom.name))) return;
@@ -43,11 +46,11 @@ function StudentCoCurricularView({ data, setData }) {
       {deleteModal}
       <p className="text-sm text-[#6E6455] -mt-4 mb-6">Enroll in posted opportunities or add your own. Your admin adds the module breakdown; you track your progress against it.</p>
 
-      {data.coCurricularCatalog.length > 0 && (
+      {visibleCatalog.length > 0 && (
         <Card className="mb-4">
           <div className="font-h font-semibold mb-3">Available to join</div>
           <div className="grid sm:grid-cols-2 gap-2">
-            {data.coCurricularCatalog.map((c) => {
+            {visibleCatalog.map((c) => {
               const enrolled = myEnrollments.some((e) => e.catalogId === c.id);
               return (
                 <div key={c.id} className="flex items-center justify-between border border-[#E6DFD1] rounded-lg px-3 py-2">

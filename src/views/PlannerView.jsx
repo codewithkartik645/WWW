@@ -5,7 +5,7 @@ import {
   Award, Pencil,
 } from "lucide-react";
 import {
-  C, uid, isAdminKey, deptName, toMin, DAYS,
+  C, uid, isAdminKey, deptName, toMin, DAYS, activeDepartments,
 } from "../theme";
 import {
   } from "../data/seedData";
@@ -39,10 +39,11 @@ function PlannerView({ data, setData, role, defaultFilter = "all", lockFilter = 
 
   const addBlock = () => {
     if (!form.label.trim()) return;
+    if (isAdmin && isDirector && data.departments.length > 1 && deptTab === "all") return; // must pick a specific department first — see banner above
     const course = data.courses.find((c) => c.id === form.courseId);
     const kind = isAdmin ? "class" : "self";
     const ownerKey = isAdmin ? null : data.session; // self-study blocks belong to whichever student created them
-    const departmentId = isAdmin ? (isHOD ? myDeptId : (deptTab !== "all" ? deptTab : data.departments[0]?.id)) : studentDeptId;
+    const departmentId = isAdmin ? (isHOD ? myDeptId : (deptTab !== "all" ? deptTab : (activeDepartments(data)[0]?.id || data.departments[0]?.id))) : studentDeptId;
     setData((d) => logActivity({ ...d, plannerBlocks: [...d.plannerBlocks, { id: uid(), ...form, kind, ownerKey, departmentId, color: course?.color || (isAdmin ? C.dark : C.green) }] }, isAdmin ? `Class scheduled: ${form.label}` : `Self-study block added: ${form.label}`));
     setForm({ ...form, label: "" });
   };
@@ -79,6 +80,7 @@ function PlannerView({ data, setData, role, defaultFilter = "all", lockFilter = 
       return true;
     }
     if (b.kind === "class" && (b.departmentId || data.departments[0]?.id) !== studentDeptId) return false; // students only see their own department's classes
+    if (b.kind === "recommended" && b.departmentId && b.departmentId !== studentDeptId) return false; // ...and only their own department's auto-generated revision blocks
     if (b.kind === "self" && b.ownerKey && b.ownerKey !== data.session) return false; // never show another student's self-study blocks
     if (filter === "all") return true; // bugfix: "all" now genuinely means all, including auto-recommended blocks
     if (filter === "self") return b.kind === "self";
@@ -152,6 +154,11 @@ function PlannerView({ data, setData, role, defaultFilter = "all", lockFilter = 
       {(isAdmin || filter === "self") && (
         <Card className="mb-4">
           <div className="text-xs font-semibold text-[#A79E8C] mb-2">{isAdmin ? "SCHEDULE A RECURRING CLASS" : "ADD A SELF-STUDY BLOCK"}</div>
+          {isAdmin && isDirector && data.departments.length > 1 && deptTab === "all" && (
+            <div className="text-xs mb-2 px-2.5 py-1.5 rounded-lg w-fit" style={{ background: "#F5E9CC", color: "#9C6B24" }}>
+              Pick a specific department tab above before scheduling — a class needs one department.
+            </div>
+          )}
           <div className="flex flex-wrap gap-2 items-end">
             <div><div className="text-xs text-[#6E6455] mb-1">Day</div>
               <select value={form.day} onChange={(e) => setForm({ ...form, day: e.target.value })} className="border border-[#E6DFD1] rounded-lg px-2 py-2 text-sm">{DAYS.map((d) => <option key={d}>{d}</option>)}</select>
