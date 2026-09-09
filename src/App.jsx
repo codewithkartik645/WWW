@@ -187,9 +187,9 @@ export default function App() {
   if (!session || !profile) return <AuthScreen />;
   if (!dataLoaded || !data) return <LoadingScreen label="Loading your classroom…" />;
 
-  // First-ever load against a brand-new Supabase project: the `classroom` row starts as `{}`.
+  // First-ever load against a brand-new Supabase project: every table starts empty.
   // Seed it once with sensible defaults so the app isn't a blank shell.
-  if (!data.departments) {
+  if (data.departments.length === 0) {
     setData(DEFAULT_SHARED_DATA);
     return <LoadingScreen label="Setting up your classroom…" />;
   }

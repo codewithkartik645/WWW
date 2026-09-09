@@ -109,11 +109,36 @@ describe("Migrated Supabase app — smoke test", () => {
     await user.click(screen.getByRole("button", { name: /^publish$/i }));
     await waitFor(() => screen.getByText("Migration Test Announcement"));
 
-    // The write to the shared classroom row is debounced (~400ms) to avoid spamming the DB
+    // The write to the announcements table is debounced (~400ms) to avoid spamming the DB
     // on rapid edits — wait for it before checking the mock store landed the change.
     await waitFor(() => {
-      expect(mock.state.classroom.data.announcements?.some((a) => a.title === "Migration Test Announcement")).toBe(true);
+      expect(mock.state.rows("announcements").some((r) => r.item.title === "Migration Test Announcement")).toBe(true);
     }, { timeout: 2000 });
     expect(realErrors()).toEqual([]);
+  });
+
+  it("real database-level isolation: a co-admin cannot read another department's courses, even via a direct table query", async () => {
+    render(<App />);
+    // Two departments, two co-admins, one course each — set up directly against the mock's
+    // tables the same way the real Supabase tables would end up populated.
+    mock.state.tables.departments.set("cs", { id: "cs", name: "Computer Science", active: true });
+    mock.state.tables.departments.set("it", { id: "it", name: "Information Technology", active: true });
+    mock.state.profiles.set("coadmin_cs", { id: "coadmin_cs", email: "cs@x.com", role: "coadmin", department_id: "cs", name: "CS HOD", active: true });
+    mock.state.profiles.set("coadmin_it", { id: "coadmin_it", email: "it@x.com", role: "coadmin", department_id: "it", name: "IT HOD", active: true });
+    mock.state.tables.courses.set("course_cs", { id: "course_cs", department_id: "cs", item: { id: "course_cs", code: "CS101", departmentId: "cs" } });
+    mock.state.tables.courses.set("course_it", { id: "course_it", department_id: "it", item: { id: "course_it", code: "IT101", departmentId: "it" } });
+
+    // Simulate the CS co-admin's own database session and query the courses table directly —
+    // exactly what the app does, and exactly what someone bypassing the UI would also do.
+    mock.state.currentUserId = "coadmin_cs";
+    const { data: csView } = await mock.supabase.from("courses").select("*");
+    expect(csView.map((r) => r.id).sort()).toEqual(["course_cs"]);
+    expect(csView.some((r) => r.id === "course_it")).toBe(false);
+
+    // And the reverse, for the IT co-admin.
+    mock.state.currentUserId = "coadmin_it";
+    const { data: itView } = await mock.supabase.from("courses").select("*");
+    expect(itView.map((r) => r.id).sort()).toEqual(["course_it"]);
+    expect(itView.some((r) => r.id === "course_cs")).toBe(false);
   });
 });
