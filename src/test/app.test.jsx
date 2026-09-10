@@ -141,40 +141,4 @@ describe("Migrated Supabase app — smoke test", () => {
     expect(itView.map((r) => r.id).sort()).toEqual(["course_it"]);
     expect(itView.some((r) => r.id === "course_cs")).toBe(false);
   });
-
-  it("student checking off a unit saves to course_progress, not the shared courses table", async () => {
-    const user = userEvent.setup();
-    render(<App />);
-    await waitFor(() => screen.getByText(/need an account\? sign up/i));
-    await user.click(screen.getByText(/need an account\? sign up/i));
-    const nameInput = document.querySelector('input:not([type="email"]):not([type="password"])');
-    const emailInput = document.querySelector('input[type="email"]');
-    const passInput = document.querySelector('input[type="password"]');
-    await user.type(nameInput, "Unit Student");
-    await user.type(emailInput, "unitstudent@example.com");
-    await user.type(passInput, "password123");
-    await user.click(screen.getByRole("button", { name: /sign up/i }));
-    await waitFor(() => expect(screen.getByText(/welcome back/i)).toBeInTheDocument());
-
-    const studentId = mock.state.currentUserId;
-    mock.state.profiles.get(studentId).department_id = "cse";
-    mock.state.tables.departments.set("cse", { id: "cse", name: "CSE", active: true });
-    mock.state.tables.courses.set("bcs501", {
-      id: "bcs501",
-      department_id: "cse",
-      item: { id: "bcs501", code: "BCS501", name: "DBMS", departmentId: "cse", units: [{ id: "u1", name: "Intro", done: false }], hidden: false, category: "Core", color: "#7A2E3A" },
-    });
-    cleanup();
-    render(<App />);
-    await waitFor(() => expect(screen.getByText(/welcome back/i)).toBeInTheDocument());
-    await user.click(screen.getByText(/subjects · unit wise/i));
-    await waitFor(() => screen.getByText("Intro"));
-    await user.click(screen.getByRole("checkbox"));
-    await waitFor(() => {
-      expect(mock.state.rows("course_progress").some((r) => (r.item.doneUnitIds || []).includes("u1"))).toBe(true);
-    }, { timeout: 2000 });
-    expect(mock.state.tables.courses.get("bcs501").item.units[0].done).toBe(false);
-    expect(screen.queryByText(/hasn't saved yet/i)).not.toBeInTheDocument();
-    expect(realErrors()).toEqual([]);
-  });
 });

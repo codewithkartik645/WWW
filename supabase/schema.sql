@@ -276,11 +276,6 @@ drop policy if exists "write tasks" on tasks;
 create policy "write tasks" on tasks for all
   using (public.my_role() in ('admin', 'coadmin') or owner_id = auth.uid())
   with check (public.my_role() in ('admin', 'coadmin') or owner_id = auth.uid());
--- Students mark admin-assigned (shared, owner_id is null) tasks done without being able to insert/delete them.
-drop policy if exists "students update shared tasks" on tasks;
-create policy "students update shared tasks" on tasks for update
-  using (owner_id is null)
-  with check (owner_id is null);
 
 -- Study logs / enrollments: the owning student, the Director, or that student's own
 -- department's HOD (for progress-tracking pages) — never a different department's HOD.
@@ -294,12 +289,6 @@ create policy "read study_logs" on study_logs for select
 drop policy if exists "write study_logs" on study_logs;
 create policy "write study_logs" on study_logs for all
   using (owner_id = auth.uid()) with check (owner_id = auth.uid());
-drop policy if exists "staff delete study_logs" on study_logs;
-create policy "staff delete study_logs" on study_logs for delete
-  using (
-    public.is_admin()
-    or exists (select 1 from profiles owner where owner.id = study_logs.owner_id and owner.department_id = public.my_department_id() and public.my_role() = 'coadmin')
-  );
 
 drop policy if exists "read enrollments" on enrollments;
 create policy "read enrollments" on enrollments for select
@@ -318,32 +307,6 @@ create policy "admins manage modules on visible enrollments" on enrollments for 
     public.is_admin()
     or exists (select 1 from profiles owner where owner.id = enrollments.owner_id and owner.department_id = public.my_department_id() and public.my_role() = 'coadmin')
   );
-drop policy if exists "staff delete enrollments" on enrollments;
-create policy "staff delete enrollments" on enrollments for delete
-  using (
-    public.is_admin()
-    or exists (select 1 from profiles owner where owner.id = enrollments.owner_id and owner.department_id = public.my_department_id() and public.my_role() = 'coadmin')
-  );
-
--- Per-student subject progress (unit checkoffs + elective pick). Lives here instead of on
--- `courses` so a student's checkbox doesn't need write access to the shared syllabus table.
-create table if not exists course_progress (
-  id text primary key,
-  owner_id uuid not null references profiles(id) on delete cascade,
-  item jsonb not null,
-  updated_at timestamptz not null default now()
-);
-alter table course_progress enable row level security;
-drop policy if exists "read course_progress" on course_progress;
-create policy "read course_progress" on course_progress for select
-  using (
-    owner_id = auth.uid()
-    or public.is_admin()
-    or exists (select 1 from profiles owner where owner.id = course_progress.owner_id and owner.department_id = public.my_department_id() and public.my_role() = 'coadmin')
-  );
-drop policy if exists "write own course_progress" on course_progress;
-create policy "write own course_progress" on course_progress for all
-  using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 
 -- ============================================================================
 -- 5. ACTIVITY LOG — append-only, department-aware read access
@@ -394,7 +357,7 @@ alter table trash_entries enable row level security;
 
 drop policy if exists "insert trash entries" on trash_entries;
 create policy "insert trash entries" on trash_entries for insert
-  with check (public.my_role() in ('admin', 'coadmin') or deleted_by = auth.uid());
+  with check (public.my_role() in ('admin', 'coadmin'));
 drop policy if exists "admin manages trash" on trash_entries;
 create policy "admin manages trash" on trash_entries for select using (public.is_admin());
 drop policy if exists "admin deletes trash" on trash_entries;
@@ -445,7 +408,6 @@ do $$ begin alter publication supabase_realtime add table tasks; exception when 
 do $$ begin alter publication supabase_realtime add table study_logs; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table co_curricular_catalog; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table enrollments; exception when duplicate_object then null; end $$;
-do $$ begin alter publication supabase_realtime add table course_progress; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table resources; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table announcements; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table activity_log; exception when duplicate_object then null; end $$;

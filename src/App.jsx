@@ -151,10 +151,8 @@ export default function App() {
   } : null;
 
   // Auto mode: generate any datesheet's timetable that has entered its 7-day window and isn't generated yet.
-  // Only staff can write `recommended` planner rows (RLS); students must not attempt this save.
   useEffect(() => {
     if (!data || !data.autoMode) return;
-    if (!isAdminKey(data.session, data.profiles)) return;
     const due = data.datesheets.filter((ds) => {
       const dl = daysUntil(ds.date);
       const already = data.plannerBlocks.some((b) => b.sourceId === ds.id);
@@ -191,9 +189,7 @@ export default function App() {
 
   // First-ever load against a brand-new Supabase project: every table starts empty.
   // Seed it once with sensible defaults so the app isn't a blank shell.
-  // Only the Director can write departments/courses (RLS) — a student hitting this first
-  // would otherwise loop failed saves and show the "hasn't saved yet" banner forever.
-  if (data.departments.length === 0 && profile?.role === "admin") {
+  if (data.departments.length === 0) {
     setData(DEFAULT_SHARED_DATA);
     return <LoadingScreen label="Setting up your classroom…" />;
   }

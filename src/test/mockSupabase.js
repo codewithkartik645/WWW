@@ -6,7 +6,7 @@
 
 const TABLES = [
   "departments", "courses", "calendar_events", "datesheets", "planner_blocks",
-  "tasks", "study_logs", "co_curricular_catalog", "enrollments", "course_progress", "resources",
+  "tasks", "study_logs", "co_curricular_catalog", "enrollments", "resources",
   "announcements", "activity_log", "trash_entries", "user_prefs",
 ];
 
