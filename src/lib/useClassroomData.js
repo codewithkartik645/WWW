@@ -21,6 +21,8 @@ const OWNER_TABLES = {
   tasks: { table: "tasks", toRow: (item) => ({ id: item.id, owner_id: item.ownerKey || null, item }), fromRow: (r) => r.item },
   studyLogs: { table: "study_logs", toRow: (item) => ({ id: item.id, owner_id: item.ownerKey, item }), fromRow: (r) => r.item },
   enrollments: { table: "enrollments", toRow: (item) => ({ id: item.id, owner_id: item.ownerKey, item }), fromRow: (r) => r.item },
+  // Per-student unit checkoffs / elective picks — students cannot write the shared `courses` table.
+  courseProgress: { table: "course_progress", toRow: (item) => ({ id: item.id, owner_id: item.ownerKey, item }), fromRow: (r) => r.item },
 };
 const DEPARTMENTS_TABLE = { table: "departments", toRow: (d) => ({ id: d.id, name: d.name, active: d.active !== false }), fromRow: (r) => ({ id: r.id, name: r.name, active: r.active }) };
 const ACTIVITY_TABLE = { table: "activity_log", toRow: (a) => ({ id: a.id, by: a.by, ts: a.ts, text: a.text }), fromRow: (r) => ({ id: r.id, by: r.by, ts: r.ts, text: r.text }) };
@@ -29,7 +31,13 @@ const TRASH_TABLE = {
   toRow: (t) => ({ id: t.id, type: t.type, deleted_by: t.deletedBy || null, item: t.item ?? {}, extra: t.extra ?? {}, label: t.label ?? null, deleted_at: t.deletedAt || new Date().toISOString() }),
   fromRow: (r) => ({ id: r.id, type: r.type, item: r.item, extra: r.extra, label: r.label, deletedAt: r.deleted_at, deletedBy: r.deleted_by }),
 };
-const ALL_ARRAY_TABLES = { ...DEPT_TABLES, ...OWNER_TABLES, departments: DEPARTMENTS_TABLE, activityLog: ACTIVITY_TABLE, trash: TRASH_TABLE };
+
+function isIgnorableWriteError(error) {
+  const msg = (error?.message || "").toLowerCase();
+  const code = error?.code || error?.details || "";
+  // Duplicate insert on a retry of an append-only table — the row already landed.
+  return error?.code === "23505" || String(code).includes("23505") || msg.includes("duplicate key");
+}
 
 // Diff two id-keyed arrays: which items are brand new or changed, which disappeared.
 function diffArrays(oldArr = [], newArr = []) {
@@ -46,7 +54,7 @@ function diffArrays(oldArr = [], newArr = []) {
 
 const EMPTY_SHARED = {
   departments: [], courses: [], calendarEvents: [], datesheets: [], plannerBlocks: [],
-  tasks: [], studyLogs: [], coCurricularCatalog: [], enrollments: [], resources: [],
+  tasks: [], studyLogs: [], coCurricularCatalog: [], enrollments: [], courseProgress: [], resources: [],
   announcements: [], activityLog: [], trash: [], autoMode: true, semester: "",
   lastSeenAnnouncements: {}, plannerHourRanges: {},
 };
@@ -65,6 +73,14 @@ export function useClassroomData(authProfile, userId) {
   const latestShared = useRef(null);
   const writeTimers = useRef({}); // one debounce timer per table, so editing courses doesn't delay saving tasks
   const pendingCount = useRef(0); // how many table-writes are scheduled/in-flight, for the unload guard
+  const failedWrites = useRef([]); // last failed payload per table, so Retry re-saves instead of reloading (reload would drop the unsaved local change)
+  const lastPersisted = useRef(null);
+  // Resolves once the most recent departments write has landed. courses/calendar_events/
+  // datesheets/planner_blocks/co_curricular_catalog/resources/announcements all reference a
+  // department_id via a foreign key — writing one of those before its department exists in the
+  // database fails with a foreign-key violation. This is most likely to bite on first-run
+  // seeding, where departments AND courses are created in the very same setData() call.
+  const departmentsSettled = useRef(Promise.resolve());
 
   const loadProfiles = useCallback(async () => {
     const { data, error } = await supabase.from("profiles").select("*");
@@ -90,7 +106,7 @@ export function useClassroomData(authProfile, userId) {
     next.departments = (depts.data || []).map(DEPARTMENTS_TABLE.fromRow);
     keys.forEach((key, i) => {
       const cfg = ({ ...DEPT_TABLES, ...OWNER_TABLES })[key];
-      next[key] = (rest[i]?.data || []).map(cfg.fromRow);
+      next[key] = (rest[i]?.data || []).map(cfg.fromRow).filter(Boolean);
     });
     next.activityLog = (rest[keys.length]?.data || []).map(ACTIVITY_TABLE.fromRow);
     next.trash = (rest[keys.length + 1]?.data || []).map(TRASH_TABLE.fromRow);
@@ -104,30 +120,52 @@ export function useClassroomData(authProfile, userId) {
     next.plannerHourRanges = hourRanges;
 
     latestShared.current = next;
+    lastPersisted.current = next;
+    failedWrites.current = [];
     setShared(next);
   }, []);
 
   // Persist one table's add/update/remove diff, with a small retry-with-backoff on failure —
   // same "don't lose a change silently" guarantee the old single-blob version had, just scoped
   // per table now instead of per whole-classroom write.
-  const writeTable = useCallback((cfg, upserts, removedIds, attempt = 0) => {
-    const jobs = [];
-    if (upserts.length) jobs.push(supabase.from(cfg.table).upsert(upserts));
-    if (removedIds.length) jobs.push(supabase.from(cfg.table).delete().in("id", removedIds));
-    if (jobs.length === 0) return;
-    pendingCount.current += 1;
-    Promise.all(jobs).then((results) => {
+  const writeTable = useCallback((key, cfg, upserts, removedIds, attempt = 0) => {
+    const run = async () => {
+      // Any table other than departments itself must wait for the department rows it
+      // references to have actually landed first — see the comment on departmentsSettled above.
+      if (key !== "departments" && DEPT_TABLES[key]) await departmentsSettled.current;
+      const jobs = [];
+      // activity_log is append-only (no UPDATE/DELETE RLS). The in-memory log is sliced to
+      // 150 entries, which would otherwise try to DELETE old rows and fail with a save error.
+      const appendOnly = key === "activityLog";
+      if (upserts.length) {
+        jobs.push(appendOnly
+          ? supabase.from(cfg.table).insert(upserts)
+          : supabase.from(cfg.table).upsert(upserts));
+      }
+      if (removedIds.length && !appendOnly) jobs.push(supabase.from(cfg.table).delete().in("id", removedIds));
+      if (jobs.length === 0) return;
+      pendingCount.current += 1;
+      const results = await Promise.all(jobs);
       pendingCount.current -= 1;
-      const failed = results.find((r) => r?.error);
+      const failed = results.find((r) => r?.error && !isIgnorableWriteError(r.error));
       if (failed) {
         // eslint-disable-next-line no-console
         console.error(`Failed to save ${cfg.table}:`, failed.error.message);
+        failedWrites.current = failedWrites.current.filter((w) => w.key !== key);
+        failedWrites.current.push({ key, cfg, upserts, removedIds });
         setSaveError(failed.error.message);
-        if (attempt < 3) setTimeout(() => writeTable(cfg, upserts, removedIds, attempt + 1), 1500 * (attempt + 1));
+        if (attempt < 3) setTimeout(() => writeTable(key, cfg, upserts, removedIds, attempt + 1), 1500 * (attempt + 1));
       } else {
-        setSaveError(null);
+        failedWrites.current = failedWrites.current.filter((w) => w.key !== key);
+        if (lastPersisted.current && latestShared.current) {
+          lastPersisted.current = { ...lastPersisted.current, [key]: latestShared.current[key] };
+        }
+        if (failedWrites.current.length === 0) setSaveError(null);
       }
-    });
+    };
+    const promise = run();
+    if (key === "departments") departmentsSettled.current = promise.catch(() => {}); // a failed dept write shouldn't wedge every dependent table forever
+    return promise;
   }, []);
 
   const scheduleWrite = useCallback((key, cfg, oldArr, newArr, deptFallback) => {
@@ -137,7 +175,7 @@ export function useClassroomData(authProfile, userId) {
       pendingCount.current -= 1;
       const { upserts, removedIds } = diffArrays(oldArr, newArr);
       if (upserts.length === 0 && removedIds.length === 0) return;
-      writeTable(cfg, upserts.map((item) => cfg.toRow(item, deptFallback)), removedIds);
+      writeTable(key, cfg, upserts.map((item) => cfg.toRow(item, deptFallback)), removedIds);
     }, 400);
   }, [writeTable]);
 
@@ -196,7 +234,17 @@ export function useClassroomData(authProfile, userId) {
       latestShared.current = nextShared;
 
       const deptFallback = nextShared.departments?.[0]?.id;
-      for (const [key, cfg] of Object.entries(ALL_ARRAY_TABLES)) {
+      // Departments go first, and immediately (no debounce) — every other department-scoped
+      // table's write waits on departmentsSettled before it actually hits the network, but that
+      // only works if this write is already in flight by the time their timers fire.
+      if (prevShared?.departments !== nextShared.departments) {
+        const { upserts, removedIds } = diffArrays(prevShared?.departments || [], nextShared.departments || []);
+        if (upserts.length || removedIds.length) {
+          pendingCount.current += 1;
+          writeTable("departments", DEPARTMENTS_TABLE, upserts.map((d) => DEPARTMENTS_TABLE.toRow(d)), removedIds).finally(() => { pendingCount.current -= 1; });
+        }
+      }
+      for (const [key, cfg] of Object.entries({ ...DEPT_TABLES, ...OWNER_TABLES, activityLog: ACTIVITY_TABLE, trash: TRASH_TABLE })) {
         if (prevShared?.[key] !== nextShared[key]) scheduleWrite(key, cfg, prevShared?.[key] || [], nextShared[key] || [], deptFallback);
       }
       if (prevShared?.autoMode !== nextShared.autoMode || prevShared?.semester !== nextShared.semester) {
@@ -232,7 +280,7 @@ export function useClassroomData(authProfile, userId) {
 
       return nextShared;
     });
-  }, [profiles, userId, scheduleWrite]);
+  }, [profiles, userId, scheduleWrite, writeTable]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -245,9 +293,24 @@ export function useClassroomData(authProfile, userId) {
   // Re-attempt every currently-failed write. Individual tables already retry themselves
   // automatically; this is for the "Retry" button so a person isn't just waiting on a timer.
   const retryNow = useCallback(() => {
+    const queued = [...failedWrites.current];
     setSaveError(null);
-    loadAll();
-  }, [loadAll]);
+    if (queued.length) {
+      queued.forEach((w) => writeTable(w.key, w.cfg, w.upserts, w.removedIds));
+      return;
+    }
+    // No remembered payload (e.g. settings/prefs). Re-diff local state against last successful load.
+    const prev = lastPersisted.current;
+    const next = latestShared.current;
+    if (!prev || !next) { loadAll(); return; }
+    const deptFallback = next.departments?.[0]?.id;
+    const { upserts: deptUps, removedIds: deptRem } = diffArrays(prev.departments || [], next.departments || []);
+    if (deptUps.length || deptRem.length) writeTable("departments", DEPARTMENTS_TABLE, deptUps.map((d) => DEPARTMENTS_TABLE.toRow(d)), deptRem);
+    for (const [key, cfg] of Object.entries({ ...DEPT_TABLES, ...OWNER_TABLES, activityLog: ACTIVITY_TABLE, trash: TRASH_TABLE })) {
+      const { upserts, removedIds } = diffArrays(prev[key] || [], next[key] || []);
+      if (upserts.length || removedIds.length) writeTable(key, cfg, upserts.map((item) => cfg.toRow(item, deptFallback)), removedIds);
+    }
+  }, [loadAll, writeTable]);
 
   const data = loaded && shared ? { ...shared, profiles, session: userId } : null;
   return { data, setData, loaded, saveError, retryNow, refreshProfiles: loadProfiles };

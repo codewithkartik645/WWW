@@ -74,6 +74,7 @@ const DEFAULT_SHARED_DATA = {
   plannerBlocks: [],
   coCurricularCatalog: [],
   enrollments: [],
+  courseProgress: [],
   resources: [],
   datesheets: [],
   announcements: [

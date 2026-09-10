@@ -8,6 +8,7 @@ import {
 import {
   } from "../data/seedData";
 import { logActivity, moveToTrash } from "../utils/activity";
+import { coursesForUser, toggleUnitProgress, setElectiveProgress } from "../utils/courseProgress";
 import {
   openAttachment,
 } from "../utils/files";
@@ -27,8 +28,9 @@ function CoursesView({ data, setData, editable }) {
   const [semesterInput, setSemesterInput] = useState(data.semester);
   const [newSubject, setNewSubject] = useState({ code: "", name: "", credits: 3, category: "Core", departmentId: isHOD ? myDeptId : (activeDepartments(data)[0]?.id || data.departments[0]?.id || DEFAULT_DEPT_ID) });
 
-  const toggleTopic = (courseId, unitId) => setData((d) => ({ ...d, courses: d.courses.map((c) => c.id !== courseId ? c : { ...c, units: c.units.map((u) => u.id === unitId ? { ...u, done: !u.done } : u) }) }));
+  const toggleTopic = (courseId, unitId) => setData((d) => toggleUnitProgress(d, courseId, unitId));
   const setElective = (courseId, name) => setData((d) => ({ ...d, courses: d.courses.map((c) => c.id === courseId ? { ...c, name } : c) }));
+  const setMyElective = (courseId, name) => setData((d) => setElectiveProgress(d, courseId, name));
   const addUnit = (courseId) => {
     const name = (newUnit[courseId] || "").trim();
     if (!name) return;
@@ -82,7 +84,8 @@ function CoursesView({ data, setData, editable }) {
 
   const grouped = useMemo(() => {
     const cats = {};
-    let visibleCourses = editable ? data.courses : data.courses.filter((c) => !c.hidden);
+    const sourceCourses = editable ? data.courses : coursesForUser(data, data.session);
+    let visibleCourses = editable ? sourceCourses : sourceCourses.filter((c) => !c.hidden);
     if (!editable) {
       const myStudentDept = data.profiles[data.session]?.departmentId || data.departments[0]?.id;
       visibleCourses = visibleCourses.filter((c) => (c.departmentId || data.departments[0]?.id) === myStudentDept);
@@ -96,7 +99,7 @@ function CoursesView({ data, setData, editable }) {
       (cats[c.category] = cats[c.category] || []).push(course);
     });
     return cats;
-  }, [data.courses, editable, deptTab, isHOD, myDeptId, data.session, data.profiles, data.departments]);
+  }, [data.courses, data.courseProgress, editable, deptTab, isHOD, myDeptId, data.session, data.profiles, data.departments]);
 
   const materialsFor = (courseId) => data.resources.filter((r) => r.courseId === courseId);
 
@@ -178,7 +181,7 @@ function CoursesView({ data, setData, editable }) {
                     </div>
                   </div>
                   {c.options ? (
-                    <select value={c.name} onChange={(e) => setElective(c.id, e.target.value)} className="font-h font-semibold text-[15px] mb-2 bg-transparent border-b border-[#E6DFD1] w-full pb-1">
+                    <select value={c.name} onChange={(e) => (editable ? setElective(c.id, e.target.value) : setMyElective(c.id, e.target.value))} className="font-h font-semibold text-[15px] mb-2 bg-transparent border-b border-[#E6DFD1] w-full pb-1">
                       {c.options.map((o) => <option key={o} value={o}>{o}</option>)}
                     </select>
                   ) : <div className="font-h font-semibold text-[15px] mb-2">{c.name}</div>}

@@ -83,7 +83,9 @@ function TasksView({ data, setData, editable }) {
             <div className="flex items-center gap-3">
               <Badge color={priColor[t.priority]}>{t.priority}</Badge>
               {editable && t.ownerKey && <Badge color={C.green}>Personal</Badge>}
-              <button onClick={() => confirmDelete(`Task "${t.title}"`, () => removeTask(t.id))} className="text-[#D9D0BC] hover:text-[#A6423A]"><Trash2 size={15} /></button>
+              {editable || t.ownerKey === data.session ? (
+                <button onClick={() => confirmDelete(`Task "${t.title}"`, () => removeTask(t.id))} className="text-[#D9D0BC] hover:text-[#A6423A]"><Trash2 size={15} /></button>
+              ) : null}
             </div>
           </Card>
         ))}

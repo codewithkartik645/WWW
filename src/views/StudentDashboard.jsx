@@ -14,14 +14,16 @@ import {
 import {
   Card, Badge, Donut, useStreak, weekLogHours,
 } from "../components/UI";
+import { coursesForUser } from "../utils/courseProgress";
 
 function StudentDashboard({ data, setData, goTo }) {
   const dueTasks = data.tasks.filter((t) => t.status !== "done" && t.due).sort((a, b) => new Date(a.due) - new Date(b.due));
   const nextExam = data.datesheets.map((e) => ({ ...e, dLeft: daysUntil(e.date) })).filter((e) => e.dLeft >= 0).sort((a, b) => a.dLeft - b.dLeft)[0];
 
   const streak = useStreak(data.studyLogs);
-  const totalTopics = data.courses.reduce((s, c) => s + c.units.length, 0);
-  const doneTopics = data.courses.reduce((s, c) => s + c.units.filter((u) => u.done).length, 0);
+  const myCourses = coursesForUser(data, data.session);
+  const totalTopics = myCourses.reduce((s, c) => s + c.units.length, 0);
+  const doneTopics = myCourses.reduce((s, c) => s + c.units.filter((u) => u.done).length, 0);
   const overallPct = totalTopics ? Math.round((doneTopics / totalTopics) * 100) : 0;
 
   const todayName = DAYS[(new Date().getDay() + 6) % 7];

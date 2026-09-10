@@ -6,7 +6,7 @@
 
 const TABLES = [
   "departments", "courses", "calendar_events", "datesheets", "planner_blocks",
-  "tasks", "study_logs", "co_curricular_catalog", "enrollments", "resources",
+  "tasks", "study_logs", "co_curricular_catalog", "enrollments", "course_progress", "resources",
   "announcements", "activity_log", "trash_entries", "user_prefs",
 ];
 
@@ -77,6 +77,20 @@ export function createMockSupabase() {
   //   .insert(rows) / .upsert(rows)          -> writes rows by id
   //   .update(patch).eq(col, val)            -> patches matching rows
   //   .delete().in(col, vals)                -> removes matching rows
+  // Mirrors the "not null references departments(id)" / nullable-FK columns in schema.sql —
+  // so a bug like writing a course before its department exists actually fails the test the
+  // same way real Postgres would reject it, instead of silently succeeding in-memory.
+  function checkForeignKeys(table, rows, state) {
+    const DEPT_FK_TABLES = new Set(["courses", "calendar_events", "datesheets", "planner_blocks", "co_curricular_catalog", "resources", "announcements"]);
+    if (!DEPT_FK_TABLES.has(table)) return null;
+    for (const r of rows) {
+      if (r.department_id != null && !state.tables.departments.has(r.department_id)) {
+        return { message: `insert or update on table "${table}" violates foreign key constraint — department "${r.department_id}" does not exist` };
+      }
+    }
+    return null;
+  }
+
   function selectResultFor(table, rows, state) {
   // Simulate the real RLS policies (see supabase/schema.sql) so tests can actually verify
   // cross-department isolation, not just assume the SQL policy text is correct: a co-admin's
@@ -118,11 +132,15 @@ function makeQuery(table, state) {
       },
       insert: async (rows) => {
         const arr = Array.isArray(rows) ? rows : [rows];
+        const fkError = checkForeignKeys(table, arr, state);
+        if (fkError) return { error: fkError };
         for (const r of arr) map.set(r.id, r);
         return { error: null };
       },
       upsert: async (rows) => {
         const arr = Array.isArray(rows) ? rows : [rows];
+        const fkError = checkForeignKeys(table, arr, state);
+        if (fkError) return { error: fkError };
         for (const r of arr) {
           if (table === "user_prefs") map.set(r.user_id, r);
           else map.set(r.id, { ...map.get(r.id), ...r });
