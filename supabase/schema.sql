@@ -162,6 +162,16 @@ create table if not exists announcements (
   item jsonb not null,
   updated_at timestamptz not null default now()
 );
+-- One row per student per calendar date. Marked by that student's own department's HOD (or the
+-- Main Admin); a student can only ever read their own rows. id is deterministic
+-- (`${studentId}::${date}`) so re-marking the same student/date overwrites instead of duplicating.
+create table if not exists attendance (
+  id text primary key,
+  department_id text not null references departments(id),
+  student_id uuid not null references profiles(id),
+  item jsonb not null,
+  updated_at timestamptz not null default now()
+);
 
 alter table courses enable row level security;
 alter table calendar_events enable row level security;
@@ -170,6 +180,7 @@ alter table planner_blocks enable row level security;
 alter table co_curricular_catalog enable row level security;
 alter table resources enable row level security;
 alter table announcements enable row level security;
+alter table attendance enable row level security;
 
 -- Read: Main Admin sees everything; everyone else sees their own department's
 -- rows plus every campus-wide (null department_id) one.
@@ -238,6 +249,23 @@ create policy "read announcements in my department" on announcements for select
   using (public.is_admin() or department_id is null or department_id = public.my_department_id());
 drop policy if exists "write announcements in my department" on announcements;
 create policy "write announcements in my department" on announcements for all
+  using (public.is_admin() or (public.my_role() = 'coadmin' and department_id = public.my_department_id()))
+  with check (public.is_admin() or (public.my_role() = 'coadmin' and department_id = public.my_department_id()));
+
+-- Read: Main Admin sees every department's attendance; a co-admin (HOD) sees only their own
+-- department's; a student sees only their own rows (student_id = auth.uid()) — never a
+-- classmate's, and never another department's.
+-- Write: attendance is only ever MARKED by an admin/co-admin — students never write their own,
+-- so there's no risk of a student marking themself present.
+drop policy if exists "read attendance scoped" on attendance;
+create policy "read attendance scoped" on attendance for select
+  using (
+    public.is_admin()
+    or (public.my_role() = 'coadmin' and department_id = public.my_department_id())
+    or student_id = auth.uid()
+  );
+drop policy if exists "write attendance in my department" on attendance;
+create policy "write attendance in my department" on attendance for all
   using (public.is_admin() or (public.my_role() = 'coadmin' and department_id = public.my_department_id()))
   with check (public.is_admin() or (public.my_role() = 'coadmin' and department_id = public.my_department_id()));
 
@@ -410,6 +438,7 @@ do $$ begin alter publication supabase_realtime add table co_curricular_catalog;
 do $$ begin alter publication supabase_realtime add table enrollments; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table resources; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table announcements; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table attendance; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table activity_log; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table trash_entries; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table classroom_settings; exception when duplicate_object then null; end $$;

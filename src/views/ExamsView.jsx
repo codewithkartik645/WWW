@@ -23,7 +23,13 @@ function ExamsView({ data, setData }) {
       return { ...cleared, plannerBlocks: [...cleared.plannerBlocks, ...blocks] };
     });
   };
-  const sorted = [...data.datesheets].sort((a, b) => new Date(a.date) - new Date(b.date));
+  // A student must never see another department's exam schedule/timetable. Datesheets predating
+  // department scoping have no departmentId at all — treat those as belonging to the very first
+  // department so nothing silently disappears (same convention used everywhere else in the app).
+  const myDeptId = data.profiles[data.session]?.departmentId || data.departments[0]?.id;
+  const sorted = data.datesheets
+    .filter((ds) => (ds.departmentId || data.departments[0]?.id) === myDeptId)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
 
   return (
     <div className="space-y-4">

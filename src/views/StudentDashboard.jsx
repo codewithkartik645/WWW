@@ -1,7 +1,7 @@
 import React, {} from "react";
 import {
   TrendingUp,
-  Check, Flame, Megaphone, ClipboardList,
+  Check, Flame, Megaphone, ClipboardList, UserCheck,
 } from "lucide-react";
 import {
   C, fmt,
@@ -16,16 +16,35 @@ import {
 } from "../components/UI";
 
 function StudentDashboard({ data, setData, goTo }) {
+  // A student must never see another department's exams/timetable on their own dashboard.
+  // Datesheets/blocks predating department scoping have no departmentId at all — treat those as
+  // belonging to the very first department, matching the convention used everywhere else.
+  const myDeptId = data.profiles[data.session]?.departmentId || data.departments[0]?.id;
   const dueTasks = data.tasks.filter((t) => t.status !== "done" && t.due).sort((a, b) => new Date(a.due) - new Date(b.due));
-  const nextExam = data.datesheets.map((e) => ({ ...e, dLeft: daysUntil(e.date) })).filter((e) => e.dLeft >= 0).sort((a, b) => a.dLeft - b.dLeft)[0];
+  const nextExam = data.datesheets
+    .filter((e) => (e.departmentId || data.departments[0]?.id) === myDeptId)
+    .map((e) => ({ ...e, dLeft: daysUntil(e.date) })).filter((e) => e.dLeft >= 0).sort((a, b) => a.dLeft - b.dLeft)[0];
 
   const streak = useStreak(data.studyLogs);
   const totalTopics = data.courses.reduce((s, c) => s + c.units.length, 0);
   const doneTopics = data.courses.reduce((s, c) => s + c.units.filter((u) => u.done).length, 0);
   const overallPct = totalTopics ? Math.round((doneTopics / totalTopics) * 100) : 0;
 
+  // Own attendance only — never another student's or another department's record.
+  const myAttendance = data.attendance.filter((a) => a.studentId === data.session);
+  const attendancePct = myAttendance.length ? Math.round((myAttendance.filter((a) => a.status === "present").length / myAttendance.length) * 100) : null;
+
   const todayName = DAYS[(new Date().getDay() + 6) % 7];
-  const todaysBlocks = data.plannerBlocks.filter((b) => b.day === todayName).sort((a, b) => toMin(a.start) - toMin(b.start));
+  // Mirrors PlannerView's own visibility rules exactly: own department's classes/recommended
+  // revision blocks, plus only this student's own self-study blocks — never another
+  // department's schedule or another student's private self-study plan.
+  const todaysBlocks = data.plannerBlocks.filter((b) => {
+    if (b.day !== todayName) return false;
+    if (b.kind === "class" && (b.departmentId || data.departments[0]?.id) !== myDeptId) return false;
+    if (b.kind === "recommended" && b.departmentId && b.departmentId !== myDeptId) return false;
+    if (b.kind === "self" && b.ownerKey && b.ownerKey !== data.session) return false;
+    return true;
+  }).sort((a, b) => toMin(a.start) - toMin(b.start));
   const courseName = (id) => data.courses.find((c) => c.id === id)?.code;
 
   const weekHours = weekLogHours(data.studyLogs);
@@ -35,12 +54,13 @@ function StudentDashboard({ data, setData, goTo }) {
     { label: "Study Streak", value: `${streak} Days`, icon: Flame, color: "#A6423A" },
     { label: "Study Hours (Week)", value: `${weekHours}h`, icon: TrendingUp, color: C.purple },
     { label: "Tasks Completed", value: `${doneTasks}/${data.tasks.length}`, icon: Check, color: C.green },
+    { label: "Attendance", value: attendancePct === null ? "—" : `${attendancePct}%`, icon: UserCheck, color: "#2C4A63" },
     { label: "Exam Countdown", value: nextExam ? `${nextExam.dLeft}d` : "—", icon: ClipboardList, color: C.amber },
   ];
 
   return (
     <div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
         {stats.map((s) => (
           <Card key={s.label}>
             <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-3" style={{ background: `${s.color}1A`, color: s.color }}><s.icon size={17} /></div>

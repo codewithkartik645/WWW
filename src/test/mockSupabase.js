@@ -7,7 +7,7 @@
 const TABLES = [
   "departments", "courses", "calendar_events", "datesheets", "planner_blocks",
   "tasks", "study_logs", "co_curricular_catalog", "enrollments", "resources",
-  "announcements", "activity_log", "trash_entries", "user_prefs",
+  "announcements", "attendance", "activity_log", "trash_entries", "user_prefs",
 ];
 
 export function createMockSupabase() {
@@ -81,7 +81,7 @@ export function createMockSupabase() {
   // so a bug like writing a course before its department exists actually fails the test the
   // same way real Postgres would reject it, instead of silently succeeding in-memory.
   function checkForeignKeys(table, rows, state) {
-    const DEPT_FK_TABLES = new Set(["courses", "calendar_events", "datesheets", "planner_blocks", "co_curricular_catalog", "resources", "announcements"]);
+    const DEPT_FK_TABLES = new Set(["courses", "calendar_events", "datesheets", "planner_blocks", "co_curricular_catalog", "resources", "announcements", "attendance"]);
     if (!DEPT_FK_TABLES.has(table)) return null;
     for (const r of rows) {
       if (r.department_id != null && !state.tables.departments.has(r.department_id)) {
@@ -106,6 +106,17 @@ export function createMockSupabase() {
     const me = state.profiles.get(state.currentUserId);
     if (me && me.role !== "admin") {
       rows = rows.filter((r) => (r.kind === "self" ? r.owner_id === state.currentUserId : (r.department_id == null || r.department_id === me.department_id)));
+    }
+  }
+  // Attendance: admin sees everything; a coadmin sees only their own department's rows; a
+  // student sees only rows where they are the student — mirrors the real "read attendance
+  // scoped" policy in schema.sql.
+  if (table === "attendance" && state.currentUserId) {
+    const me = state.profiles.get(state.currentUserId);
+    if (me && me.role === "coadmin") {
+      rows = rows.filter((r) => r.department_id === me.department_id);
+    } else if (me && me.role === "student") {
+      rows = rows.filter((r) => r.student_id === state.currentUserId);
     }
   }
   return rows;

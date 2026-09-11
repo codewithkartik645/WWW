@@ -76,6 +76,7 @@ const DEFAULT_SHARED_DATA = {
   enrollments: [],
   resources: [],
   datesheets: [],
+  attendance: [],
   announcements: [
     { id: uid(), title: "Welcome to your Study Tracker", message: "Admin can upload the ST/PUT datesheet and the app will generate a suggested revision timetable automatically.", date: new Date().toISOString().slice(0, 10) },
   ],

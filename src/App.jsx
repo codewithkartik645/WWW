@@ -3,7 +3,7 @@ import {
   LayoutGrid, CalendarDays, CalendarClock, ListChecks, Users2, TrendingUp,
   FolderOpen, Settings as SettingsIcon, Shield, Wand2, Upload, GraduationCap,
   Megaphone, ClipboardList, Building2, X, Award, LogOut, Activity, BookOpen,
-  Trash2, AlertTriangle, RefreshCw,
+  Trash2, AlertTriangle, RefreshCw, UserCheck,
 } from "lucide-react";
 import { useAuth } from "./lib/useAuth";
 import { useClassroomData } from "./lib/useClassroomData";
@@ -21,6 +21,7 @@ import CalendarView from "./views/CalendarView";
 import CoursesView from "./views/CoursesView";
 import PlannerView from "./views/PlannerView";
 import TasksView from "./views/TasksView";
+import AttendanceView from "./views/AttendanceView";
 import DatesheetView from "./views/DatesheetView";
 import TimetablesView from "./views/TimetablesView";
 import ExamsView from "./views/ExamsView";
@@ -48,6 +49,7 @@ const NAV_STUDENT = [
     { id: "classes-view", label: "College Classes", icon: Building2 },
     { id: "courses", label: "Subjects · Unit Wise", icon: BookOpen },
     { id: "tasks", label: "Tasks & Deadlines", icon: ListChecks },
+    { id: "attendance", label: "Attendance", icon: UserCheck },
     { id: "cocurricular", label: "Co-curricular", icon: Users2 },
     { id: "exams", label: "Exams & Timetable", icon: ClipboardList },
     { id: "announcements", label: "Announcements", icon: Megaphone },
@@ -67,6 +69,7 @@ const NAV_ADMIN = [
     { id: "subjects", label: "Subjects · Unit Wise", icon: BookOpen },
     { id: "classes", label: "College Classes", icon: Building2 },
     { id: "tasks", label: "Tasks & Deadlines", icon: ListChecks },
+    { id: "attendance", label: "Attendance", icon: UserCheck },
     { id: "cocurricular", label: "Co-curricular", icon: Users2 },
     { id: "announcements", label: "Announcements", icon: Megaphone },
   ]},
@@ -259,6 +262,7 @@ export default function App() {
           {tab === "trash" && isSuperAdmin && <TrashView data={data} setData={setData} />}
           {tab === "datesheet" && isAdmin && <DatesheetView data={data} setData={setData} />}
           {tab === "timetables" && <TimetablesView data={data} setData={setData} />}
+          {tab === "attendance" && <AttendanceView data={data} setData={setData} />}
           {tab === "exams" && <ExamsView data={data} setData={setData} />}
           {tab === "announcements" && <AnnouncementsView data={data} setData={setData} isAdmin={isAdmin} goTo={goTo} />}
           {tab === "progress" && <ProgressView data={data} setData={setData} isAdmin={isAdmin} />}

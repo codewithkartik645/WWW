@@ -35,6 +35,8 @@ function AdminStudentDetailView({ data, setData, studentKey, goTo }) {
   const studyLogs = [...data.studyLogs.filter((l) => l.ownerKey === studentKey)].sort((a, b) => new Date(b.date) - new Date(a.date));
   const selfBlocks = data.plannerBlocks.filter((b) => b.kind === "self" && b.ownerKey === studentKey);
   const totalMinutes = studyLogs.reduce((s, l) => s + l.minutes, 0);
+  const attendance = data.attendance.filter((a) => a.studentId === studentKey);
+  const attendancePct = attendance.length ? Math.round((attendance.filter((a) => a.status === "present").length / attendance.length) * 100) : null;
 
   const courseCode = (id) => data.courses.find((c) => c.id === id)?.code || "—";
   const priColor = { high: C.red, medium: C.amber, low: C.green };
@@ -85,11 +87,12 @@ function AdminStudentDetailView({ data, setData, studentKey, goTo }) {
         </div>
       </Card>
 
-      <div className="grid sm:grid-cols-4 gap-3">
+      <div className="grid sm:grid-cols-5 gap-3">
         <Card className="!p-3 text-center"><div className="font-h text-xl font-semibold" style={{ color: C.purple }}>{enrollments.length}</div><div className="text-[11px]" style={{ color: "#A79E8C" }}>Co-curricular enrollments</div></Card>
         <Card className="!p-3 text-center"><div className="font-h text-xl font-semibold" style={{ color: C.green }}>{tasks.filter((t) => t.status === "done").length}/{tasks.length}</div><div className="text-[11px]" style={{ color: "#A79E8C" }}>Personal tasks done</div></Card>
         <Card className="!p-3 text-center"><div className="font-h text-xl font-semibold" style={{ color: "#9C6B24" }}>{(totalMinutes / 60).toFixed(1)}h</div><div className="text-[11px]" style={{ color: "#A79E8C" }}>Study time logged</div></Card>
         <Card className="!p-3 text-center"><div className="font-h text-xl font-semibold" style={{ color: "#2C4A63" }}>{selfBlocks.length}</div><div className="text-[11px]" style={{ color: "#A79E8C" }}>Self-study blocks</div></Card>
+        <Card className="!p-3 text-center"><div className="font-h text-xl font-semibold" style={{ color: C.red }}>{attendancePct === null ? "—" : `${attendancePct}%`}</div><div className="text-[11px]" style={{ color: "#A79E8C" }}>Attendance{attendance.length ? ` (${attendance.length} days)` : ""}</div></Card>
       </div>
 
       <Card>

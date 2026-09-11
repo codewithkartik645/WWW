@@ -1,9 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
-  CalendarClock, Plus, Wand2, X, RefreshCw, Pencil,
+  CalendarClock, Plus, Wand2, X, RefreshCw, Pencil, Building2,
 } from "lucide-react";
 import {
-  C, uid, fmtFull,
+  C, uid, fmtFull, deptName, isAdminKey,
   daysUntil, DAYS,
 } from "../theme";
 import {
@@ -12,12 +12,30 @@ import { logActivity, moveToTrash, generateRecommendedBlocks } from "../utils/ac
 import {
   } from "../utils/files";
 import {
-  Card, useDeleteConfirm,
+  Card, useDeleteConfirm, DepartmentScopeTabs,
 } from "../components/UI";
 
+// Own department's datesheet. Datesheets predating department scoping have no departmentId
+// at all — treat those as belonging to the very first department so nothing silently disappears.
+const dsDept = (data, ds) => ds.departmentId || data.departments[0]?.id;
+
 function TimetablesView({ data, setData }) {
+  const isDirector = data.profiles[data.session]?.role === "admin";
+  const isHOD = isAdminKey(data.session, data.profiles) && !isDirector;
+  const myDeptId = isHOD ? (data.profiles[data.session]?.departmentId || data.departments[0]?.id) : null;
+  const [viewTab, setViewTab] = useState(isHOD ? myDeptId : "all");
+  // An HOD may only regenerate/edit/delete their own department's timetable — the Director can
+  // manage every department's, whichever one they're currently viewing.
+  const canManage = (ds) => isDirector || (isHOD && dsDept(data, ds) === myDeptId);
+
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ day: "Mon", start: "09:00", end: "10:00", label: "" });
+
+  const visibleDatesheets = useMemo(() => data.datesheets.filter((ds) => {
+    if (isHOD) return dsDept(data, ds) === myDeptId; // HOD never sees another department's timetable, full stop
+    if (viewTab === "all") return true;
+    return dsDept(data, ds) === viewTab;
+  }), [data.datesheets, isHOD, myDeptId, viewTab]);
 
   const regenerate = (ds) => {
     setData((d) => {
@@ -43,10 +61,12 @@ function TimetablesView({ data, setData }) {
     });
   };
   const addBlock = (ds) => {
-    const course = data.courses.find((c) => c.id === ds.courseId) || data.courses[0];
+    const deptCourses = data.courses.filter((c) => (c.departmentId || data.departments[0]?.id) === dsDept(data, ds));
+    const course = deptCourses.find((c) => c.id === ds.courseId) || deptCourses[0];
     const newBlock = {
       id: uid(), day: "Mon", start: "09:00", end: "10:00", label: course ? `${course.code} revision` : "Revision session",
       courseId: course?.id || "", color: course?.color || C.purple, kind: "recommended", sourceId: ds.id, examDate: ds.date,
+      departmentId: dsDept(data, ds), // without this, the entry would show up for every department's students (PlannerView only filters recommended blocks that HAVE a departmentId)
     };
     setData((d) => logActivity({ ...d, plannerBlocks: [...d.plannerBlocks, newBlock] }, `Timetable entry added: ${newBlock.label}`));
     startEdit(newBlock);
@@ -55,8 +75,16 @@ function TimetablesView({ data, setData }) {
   return (
     <div className="space-y-4">
       {deleteModal}
-      {data.datesheets.length === 0 && <Card><div className="text-sm text-[#A79E8C]">Upload a datesheet first — timetables generate automatically from it.</div></Card>}
-      {data.datesheets.map((ds) => {
+
+      {isHOD && data.departments.length > 1 && (
+        <div className="text-xs px-3 py-1.5 rounded-lg bg-white border border-[#E6DFD1] w-fit flex items-center gap-1.5" style={{ color: "#2B2620" }}>
+          <Building2 size={13} /> <b>{deptName(data, myDeptId)}</b> <span style={{ color: "#A79E8C" }}>— you only see and manage your own department's timetable</span>
+        </div>
+      )}
+      {isDirector && <DepartmentScopeTabs data={data} isHOD={false} activeId={viewTab} onChange={setViewTab} includeInactive />}
+
+      {visibleDatesheets.length === 0 && <Card><div className="text-sm text-[#A79E8C]">Upload a datesheet first — timetables generate automatically from it.</div></Card>}
+      {visibleDatesheets.map((ds) => {
         const blocks = data.plannerBlocks.filter((b) => b.sourceId === ds.id).sort((a, b) => DAYS.indexOf(a.day) - DAYS.indexOf(b.day));
         const dLeft = daysUntil(ds.date);
         const urgency = dLeft < 0 ? { bg: "#F4EEE1", fg: "#6E6455", label: "Past" } : dLeft <= 3 ? { bg: "#F1E1DC", fg: C.red, label: `${dLeft}d left` } : dLeft <= 7 ? { bg: "#F5E9CC", fg: "#9C6B24", label: `${dLeft}d left` } : { bg: "#EEF2E7", fg: C.green, label: `${dLeft}d left` };
@@ -70,10 +98,14 @@ function TimetablesView({ data, setData }) {
                   <div className="text-xs text-[#A79E8C]">{ds.examType} · {fmtFull(ds.date)}</div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => addBlock(ds)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-[#E6DFD1] text-[#6E6455] hover:bg-[#FAF6EF]"><Plus size={13} /> Add entry</button>
-                <button onClick={() => regenerate(ds)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg text-white" style={{ background: C.purple }}><RefreshCw size={13} /> Regenerate</button>
-              </div>
+              {canManage(ds) ? (
+                <div className="flex items-center gap-2">
+                  <button onClick={() => addBlock(ds)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-[#E6DFD1] text-[#6E6455] hover:bg-[#FAF6EF]"><Plus size={13} /> Add entry</button>
+                  <button onClick={() => regenerate(ds)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg text-white" style={{ background: C.purple }}><RefreshCw size={13} /> Regenerate</button>
+                </div>
+              ) : (
+                <span className="text-[10px] flex-shrink-0" style={{ color: "#A79E8C" }}>view only</span>
+              )}
             </div>
             <div className="px-5 pb-5">
             {blocks.length === 0 ? <div className="text-sm text-[#A79E8C]">Not generated yet — it will appear automatically within 7 days of the exam, click Regenerate, or Add entry to build one manually.</div> : (
@@ -96,10 +128,12 @@ function TimetablesView({ data, setData }) {
                     </div>
                   ) : (
                     <div key={b.id} className="relative group rounded-xl p-2.5 text-xs text-white shadow-sm hover:shadow-md transition-shadow" style={{ background: `linear-gradient(135deg, ${b.color}, ${b.color}CC)` }}>
-                      <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => startEdit(b)} className="w-5 h-5 rounded bg-black/25 flex items-center justify-center hover:bg-black/40"><Pencil size={11} /></button>
-                        <button onClick={() => deleteBlock(b.id, b.label)} className="w-5 h-5 rounded bg-black/25 flex items-center justify-center hover:bg-black/40"><X size={11} /></button>
-                      </div>
+                      {canManage(ds) && (
+                        <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => startEdit(b)} className="w-5 h-5 rounded bg-black/25 flex items-center justify-center hover:bg-black/40"><Pencil size={11} /></button>
+                          <button onClick={() => deleteBlock(b.id, b.label)} className="w-5 h-5 rounded bg-black/25 flex items-center justify-center hover:bg-black/40"><X size={11} /></button>
+                        </div>
+                      )}
                       <div className="flex items-center gap-1 font-semibold"><CalendarClock size={11} className="opacity-90" /> {b.day}</div>
                       <div className="opacity-90 mt-0.5">{b.start}–{b.end}</div>
                       <div className="opacity-90 pr-4 mt-0.5 truncate">{b.label}</div>

@@ -16,6 +16,11 @@ const DEPT_TABLES = {
   coCurricularCatalog: { table: "co_curricular_catalog", toRow: (item) => ({ id: item.id, department_id: item.departmentId || null, item }), fromRow: (r) => r.item },
   resources: { table: "resources", toRow: (item) => ({ id: item.id, department_id: item.departmentId || null, item }), fromRow: (r) => r.item },
   announcements: { table: "announcements", toRow: (item) => ({ id: item.id, department_id: item.departmentId || null, item }), fromRow: (r) => r.item },
+  // One row per student per date. departmentId comes from the student's own department (set
+  // when marked) and student_id ties it to that student, matching the plannerBlocks pattern —
+  // this is what lets RLS enforce "a co-admin only marks/reads their own department's roster,
+  // a student only ever reads their own rows" at the database level, not just in the UI.
+  attendance: { table: "attendance", toRow: (item) => ({ id: item.id, department_id: item.departmentId, student_id: item.studentId, item }), fromRow: (r) => r.item },
 };
 const OWNER_TABLES = {
   tasks: { table: "tasks", toRow: (item) => ({ id: item.id, owner_id: item.ownerKey || null, item }), fromRow: (r) => r.item },
@@ -46,7 +51,7 @@ function diffArrays(oldArr = [], newArr = []) {
 const EMPTY_SHARED = {
   departments: [], courses: [], calendarEvents: [], datesheets: [], plannerBlocks: [],
   tasks: [], studyLogs: [], coCurricularCatalog: [], enrollments: [], resources: [],
-  announcements: [], activityLog: [], trash: [], autoMode: true, semester: "",
+  announcements: [], activityLog: [], trash: [], attendance: [], autoMode: true, semester: "",
   lastSeenAnnouncements: {}, plannerHourRanges: {},
 };
 
