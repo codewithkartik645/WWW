@@ -251,6 +251,12 @@ function PlannerView({ data, setData, role, defaultFilter = "all", lockFilter = 
                           style={{
                             top: (toMin(b.start) % 60) * (CELL_H / 60),
                             height: Math.max(dur * (CELL_H / 60), 15),
+                            // A class spanning more than 60 minutes overflows past its own hour
+                            // row into the next row's <div>. Without an explicit z-index here,
+                            // that next row's own background silently paints over the overflow
+                            // (it only reappeared on hover, once hover:z-30 kicked in) — this
+                            // keeps it visible all the time, not just while hovering.
+                            zIndex: 10,
                             paddingLeft: 6, paddingRight: 4, paddingTop: 2, paddingBottom: 2,
                             fontSize: 9, color: "#fff",
                             background: `linear-gradient(140deg, ${baseColor}, ${baseColor}CC)`,

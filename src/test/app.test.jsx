@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, waitFor, cleanup, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 import React from "react";
@@ -39,7 +39,7 @@ describe("Migrated Supabase app — smoke test", () => {
     expect(realErrors()).toEqual([]);
   });
 
-  it("sign up creates a real account and lands on the dashboard as a student", async () => {
+  it("a newly signed-up student is held on a pending screen until an admin assigns a department", async () => {
     const user = userEvent.setup();
     render(<App />);
     await waitFor(() => screen.getByText(/need an account\? sign up/i));
@@ -54,7 +54,11 @@ describe("Migrated Supabase app — smoke test", () => {
     await user.type(passInput, "password123");
     await user.click(screen.getByRole("button", { name: /sign up/i }));
 
-    await waitFor(() => expect(screen.getByText(/welcome back/i)).toBeInTheDocument(), { timeout: 5000 });
+    // Brand-new accounts start with no department at all (department_id stays NULL until an
+    // admin explicitly assigns one) — the student must be held here, not dropped straight onto
+    // whichever department happens to be first.
+    await waitFor(() => expect(screen.getByText(/almost there/i)).toBeInTheDocument(), { timeout: 5000 });
+    expect(screen.queryByText(/welcome back, test student/i)).not.toBeInTheDocument();
     expect(realErrors()).toEqual([]);
   });
 
@@ -70,10 +74,17 @@ describe("Migrated Supabase app — smoke test", () => {
     await user.type(emailInput, "admin1@example.com");
     await user.type(passInput, "password123");
     await user.click(screen.getByRole("button", { name: /sign up/i }));
-    await waitFor(() => expect(screen.getByText(/welcome back/i)).toBeInTheDocument());
+    // Freshly signed up, still just a plain (unassigned) student — held on the pending screen.
+    await waitFor(() => expect(screen.getByText(/almost there/i)).toBeInTheDocument());
     r1.unmount();
+    // Fully remove the first render's DOM before mounting a second one below — without this,
+    // r1's container div can linger in document.body alongside the new one and cause
+    // intermittent stale-DOM interference between the two mounts.
+    cleanup();
 
     // Promote to admin directly in the mock's data store (simulating the one-time SQL step).
+    // The Main Admin role doesn't need a department (it manages every department), so this
+    // promotion alone is enough to clear the pending screen once the app re-fetches on remount.
     for (const p of mock.state.profiles.values()) {
       if (p.email === "admin1@example.com") p.role = "admin";
     }
@@ -87,7 +98,7 @@ describe("Migrated Supabase app — smoke test", () => {
 
   it("admin can publish an announcement and it is visible after re-render (shared classroom sync)", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    const r1 = render(<App />);
     await waitFor(() => screen.getByText(/need an account\? sign up/i));
     await user.click(screen.getByText(/need an account\? sign up/i));
     const nameInput = document.querySelector('input:not([type="email"]):not([type="password"])');
@@ -97,12 +108,27 @@ describe("Migrated Supabase app — smoke test", () => {
     await user.type(emailInput, "admin2@example.com");
     await user.type(passInput, "password123");
     await user.click(screen.getByRole("button", { name: /sign up/i }));
-    await waitFor(() => expect(screen.getByText(/welcome back/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/almost there/i)).toBeInTheDocument());
     for (const p of mock.state.profiles.values()) if (p.email === "admin2@example.com") p.role = "admin";
+    r1.unmount();
+    cleanup(); // fully remove the first render's DOM before mounting a second one below — without
+    // this, r1's container div can linger in document.body alongside the new one, which is what
+    // made this test intermittently flaky (a stale DOM node from the first mount, not a real bug).
 
-    const bellBtn = document.querySelector('button[title="Announcements"]');
-    await user.click(bellBtn);
-    await waitFor(() => screen.getByText(/view all announcements/i));
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/welcome back/i)).toBeInTheDocument());
+
+    // Wait for the bell button itself (not just adjacent text) to be present and stay clickable —
+    // there's a brief transient re-render right after "Welcome back" first appears (while the
+    // freshly-promoted role/profile data settles), during which a plain one-time DOM query could
+    // catch the tree mid-transition and get null. Retrying via waitFor sidesteps that race
+    // entirely instead of guessing a fixed delay.
+    await waitFor(() => {
+      const btn = document.querySelector('button[title="Announcements"]');
+      if (!btn) throw new Error("bell button not mounted yet");
+      fireEvent.click(btn);
+    }, { timeout: 3000 });
+    await waitFor(() => screen.getByText(/view all announcements/i), { timeout: 3000 });
     await user.click(screen.getByText(/view all announcements/i));
     await waitFor(() => screen.getByPlaceholderText("Title"));
     await user.type(screen.getByPlaceholderText("Title"), "Migration Test Announcement");

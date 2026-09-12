@@ -38,21 +38,79 @@ create table if not exists profiles (
 
 alter table profiles enable row level security;
 
+-- Small helper functions used throughout the RLS policies below: "what does
+-- the current user's own profile say?" — keeps every policy short and consistent.
+-- Defined here, before the first policy that uses them, since a policy's
+-- expression is validated (and the referenced function must already exist)
+-- at CREATE POLICY time.
+create or replace function public.is_admin()
+returns boolean as $$
+  select exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin');
+$$ language sql security definer stable;
+
+create or replace function public.my_department_id()
+returns text as $$
+  select department_id from profiles where id = auth.uid();
+$$ language sql security definer stable;
+
+create or replace function public.my_role()
+returns text as $$
+  select role from profiles where id = auth.uid();
+$$ language sql security definer stable;
+
 drop policy if exists "profiles are readable by any signed-in user" on profiles;
 create policy "profiles are readable by any signed-in user"
   on profiles for select
   using (auth.role() = 'authenticated');
 
+-- SECURITY FIX: the original "own profile" policy had no WITH CHECK, so it only
+-- restricted WHICH ROW a user could update (their own), not WHICH COLUMNS. Any
+-- signed-in user — including a plain student — could call
+--   supabase.from('profiles').update({ role: 'admin' }).eq('id', myOwnId)
+-- directly from the browser console and grant themselves full Admin access,
+-- completely bypassing every frontend role check. The WITH CHECK below compares
+-- the proposed new row's role/department_id/active against the CURRENT values
+-- (via the stable my_role()/my_department_id() helpers, which resolve to the
+-- pre-update row within this same statement) and rejects the update if any of
+-- them would change — a user can update their own name/photo, never their own
+-- privileges.
 drop policy if exists "users can update their own profile" on profiles;
 create policy "users can update their own profile"
   on profiles for update
-  using (auth.uid() = id);
+  using (auth.uid() = id)
+  with check (
+    auth.uid() = id
+    and role = public.my_role()
+    and department_id is not distinct from public.my_department_id()
+    and active = (select active from profiles where id = auth.uid())
+  );
 
+-- SECURITY FIX: the old "admins can update any profile" policy let ANY co-admin
+-- update ANY row in the table — another department's students, another
+-- co-admin's account, even promote a colleague (or themselves) straight to
+-- 'admin'. Split into two policies: the Director (role='admin') keeps full,
+-- unrestricted access; a co-admin can only touch STUDENT rows already in their
+-- OWN department, and the WITH CHECK forbids that update from changing the
+-- target's role or department — a co-admin can deactivate/reactivate their own
+-- department's students, and nothing more.
 drop policy if exists "admins can update any profile" on profiles;
-create policy "admins can update any profile"
+create policy "director can update any profile"
+  on profiles for update
+  using (public.is_admin())
+  with check (public.is_admin());
+
+drop policy if exists "coadmin can manage their own department's students" on profiles;
+create policy "coadmin can manage their own department's students"
   on profiles for update
   using (
-    exists (select 1 from profiles p where p.id = auth.uid() and p.role in ('admin', 'coadmin'))
+    public.my_role() = 'coadmin'
+    and role = 'student'
+    and department_id = public.my_department_id()
+  )
+  with check (
+    public.my_role() = 'coadmin'
+    and role = 'student' -- cannot promote/demote anyone, including themselves
+    and department_id = public.my_department_id() -- cannot move a student to another department
   );
 
 create or replace function public.handle_new_user()
@@ -68,23 +126,6 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
-
--- Small helper functions used throughout the RLS policies below: "what does
--- the current user's own profile say?" — keeps every policy short and consistent.
-create or replace function public.is_admin()
-returns boolean as $$
-  select exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin');
-$$ language sql security definer stable;
-
-create or replace function public.my_department_id()
-returns text as $$
-  select department_id from profiles where id = auth.uid();
-$$ language sql security definer stable;
-
-create or replace function public.my_role()
-returns text as $$
-  select role from profiles where id = auth.uid();
-$$ language sql security definer stable;
 
 -- ============================================================================
 -- 2. DEPARTMENTS — only the Main Admin (Director) creates/edits/deactivates these.

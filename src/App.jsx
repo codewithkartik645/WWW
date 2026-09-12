@@ -3,7 +3,7 @@ import {
   LayoutGrid, CalendarDays, CalendarClock, ListChecks, Users2, TrendingUp,
   FolderOpen, Settings as SettingsIcon, Shield, Wand2, Upload, GraduationCap,
   Megaphone, ClipboardList, Building2, X, Award, LogOut, Activity, BookOpen,
-  Trash2, AlertTriangle, RefreshCw, UserCheck,
+  Trash2, AlertTriangle, RefreshCw, UserCheck, Clock3,
 } from "lucide-react";
 import { useAuth } from "./lib/useAuth";
 import { useClassroomData } from "./lib/useClassroomData";
@@ -91,6 +91,33 @@ function LoadingScreen({ label }) {
   return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: C.bg, color: C.purple, fontFamily: "'Source Serif 4', Georgia, serif" }}>
       {label}
+    </div>
+  );
+}
+
+// Shown to a student whose account has no department yet. New signups never get a department
+// auto-assigned (the database leaves department_id NULL) — an admin has to explicitly allocate
+// one from Manage Students. Without this screen, the rest of the app's "treat a missing
+// departmentId as the first department" fallback (used everywhere for pre-department legacy
+// data) would silently drop a brand-new, not-yet-assigned student into Department #1's
+// timetable, exams and attendance before any admin ever touched their account.
+// The profiles table is realtime-subscribed, so the moment an admin assigns a department this
+// screen disappears on its own — no manual refresh needed.
+function PendingDepartmentScreen({ onLogout }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: C.bg }}>
+      <div className="max-w-sm w-full text-center bg-white rounded-2xl p-8 shadow-sm" style={{ border: `1px solid ${C.border}` }}>
+        <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: C.purpleSoft, color: C.purple }}>
+          <Clock3 size={24} />
+        </div>
+        <div className="font-h text-lg font-semibold mb-1.5" style={{ color: "#2B2620" }}>Almost there</div>
+        <div className="text-sm mb-6" style={{ color: "#8A8072" }}>
+          Your account is set up, but you haven't been assigned to a department yet. Once your admin allocates one, your dashboard, timetable, exams and attendance will appear here automatically — no need to refresh.
+        </div>
+        <button onClick={onLogout} className="text-sm font-semibold px-4 py-2 rounded-lg border" style={{ borderColor: C.border, color: "#6E6455" }}>
+          Log out
+        </button>
+      </div>
     </div>
   );
 }
@@ -199,6 +226,15 @@ export default function App() {
 
   const isAdmin = isAdminKey(data.session, data.profiles);
   const isSuperAdmin = data.profiles[data.session]?.role === "admin"; // only the original admin account manages co-admins
+
+  // A brand-new student has no department yet (see PendingDepartmentScreen above for why) —
+  // block them from the rest of the app entirely rather than letting the "missing departmentId
+  // falls back to the first department" convention used elsewhere quietly grant them access to
+  // a department they were never actually assigned to.
+  if (!isAdmin && !data.profiles[data.session]?.departmentId) {
+    return <PendingDepartmentScreen onLogout={signOut} />;
+  }
+
   // Restore Deleted Items can bring back removed co-admin/admin accounts and every user's
   // deleted data, so — like Co-Admins — it's reserved for the original admin, not any co-admin.
   const NAV_SECTIONS = isAdmin
@@ -248,11 +284,11 @@ export default function App() {
           {tab === "dashboard" && (isAdmin ? <AdminDashboard data={data} setData={setData} goTo={goTo} /> : <StudentDashboard data={data} setData={setData} goTo={goTo} />)}
           {tab === "calendar" && <CalendarView data={data} setData={setData} editable={isAdmin} />}
           {tab === "courses" && <CoursesView data={data} setData={setData} editable={false} />}
-          {tab === "subjects" && <CoursesView data={data} setData={setData} editable={true} />}
+          {tab === "subjects" && isAdmin && <CoursesView data={data} setData={setData} editable={true} />}
           {tab === "planner" && <PlannerView data={data} setData={setData} role="student" defaultFilter="all" />}
           {tab === "selfstudy" && <PlannerView data={data} setData={setData} role="student" defaultFilter="self" lockFilter />}
           {tab === "classes-view" && <PlannerView data={data} setData={setData} role="student" defaultFilter="class" lockFilter />}
-          {tab === "classes" && <PlannerView data={data} setData={setData} role="admin" />}
+          {tab === "classes" && isAdmin && <PlannerView data={data} setData={setData} role="admin" />}
           {tab === "tasks" && <TasksView data={data} setData={setData} editable={isAdmin} />}
           {tab === "cocurricular" && (isAdmin ? <AdminCoCurricularView data={data} setData={setData} /> : <StudentCoCurricularView data={data} setData={setData} />)}
           {tab === "students" && isAdmin && <AdminStudentsView data={data} setData={setData} onViewStudent={(key) => { setViewStudentKey(key); goTo("student-detail"); }} refreshProfiles={refreshProfiles} />}

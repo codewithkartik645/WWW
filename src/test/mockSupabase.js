@@ -40,6 +40,11 @@ export function createMockSupabase() {
       return { data: { subscription: { unsubscribe: () => {} } } };
     },
     signUp: async ({ email, password, options }) => {
+      // Real Supabase rejects a second signup with an email already registered — mirror that so
+      // tests can verify the app surfaces this instead of silently creating a duplicate account.
+      if ([...state.users.values()].some((u) => u.email === email)) {
+        return { error: { message: "User already registered" } };
+      }
       const id = `user_${state.users.size + 1}`;
       state.users.set(id, { email, password });
       state.profiles.set(id, {
@@ -55,10 +60,13 @@ export function createMockSupabase() {
     },
     signInWithPassword: async ({ email, password }) => {
       const entry = [...state.users.entries()].find(([, u]) => u.email === email);
-      if (!entry || entry[1].password !== password) return { error: { message: "Invalid login credentials" } };
+      if (!entry || entry[1].password !== password) return { data: { user: null, session: null }, error: { message: "Invalid login credentials" } };
       state.currentUserId = entry[0];
       fireAuthChange();
-      return { error: null };
+      // Our mock's signUp auto-confirms immediately (see the comment there) — mirror that here
+      // so useAuth's post-signIn "is this account actually confirmed?" check doesn't reject
+      // every mock-signed-in test user.
+      return { data: { user: { id: entry[0], email, email_confirmed_at: new Date().toISOString() }, session: currentSession() }, error: null };
     },
     signOut: async () => { state.currentUserId = null; fireAuthChange(); return { error: null }; },
     updateUser: async ({ password }) => {
@@ -163,6 +171,22 @@ function makeQuery(table, state) {
           if (table === "profiles") {
             const row = state.profiles.get(val);
             if (!row) return { error: { message: "not found" } };
+            // Mirrors the schema.sql "profiles" UPDATE policies exactly (see the SECURITY FIX
+            // comments there): a Director can update anything; anyone can update their own row
+            // but never change their own role/department/active; a co-admin can only touch
+            // their own department's students, and never change THAT student's role/department.
+            const me = state.profiles.get(state.currentUserId);
+            if (!me) return { error: authorizedError() };
+            const isDirector = me.role === "admin";
+            const isSelf = state.currentUserId === val;
+            const changesRole = "role" in patch && patch.role !== row.role;
+            const changesDept = "department_id" in patch && patch.department_id !== row.department_id;
+            const changesActive = "active" in patch && patch.active !== row.active;
+            let allowed = false;
+            if (isDirector) allowed = true;
+            else if (isSelf) allowed = !changesRole && !changesDept && !changesActive;
+            else if (me.role === "coadmin" && row.role === "student" && row.department_id === me.department_id) allowed = !changesRole && !changesDept;
+            if (!allowed) return { error: { message: 'new row violates row-level security policy for table "profiles"' } };
             Object.assign(row, patch);
             return { error: null };
           }

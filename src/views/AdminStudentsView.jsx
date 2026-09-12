@@ -19,7 +19,10 @@ function AdminStudentsView({ data, setData, onViewStudent, refreshProfiles }) {
   const isDirector = data.profiles[data.session]?.role === "admin";
   const isHOD = isAdminKey(data.session, data.profiles) && !isDirector;
   const myDeptId = isHOD ? (data.profiles[data.session]?.departmentId || data.departments[0]?.id) : null;
-  const canManageStudent = (key) => isDirector || (isHOD && (data.profiles[key]?.departmentId || data.departments[0]?.id) === myDeptId);
+  // No fallback to "the first department" here — a student with no departmentId hasn't been
+  // assigned to ANY department yet, so no HOD should ever be treated as able to manage them.
+  // Only the Director (Main Admin) can perform that first assignment.
+  const canManageStudent = (key) => isDirector || (isHOD && data.profiles[key]?.departmentId === myDeptId);
   const studentKeys = useMemo(() => Object.keys(data.profiles).filter((k) => !isAdminKey(k, data.profiles)), [data.profiles]);
 
   const [deptTab, setDeptTab] = useState(isHOD ? myDeptId : "all");
@@ -42,9 +45,15 @@ function AdminStudentsView({ data, setData, onViewStudent, refreshProfiles }) {
 
   const filteredKeys = studentKeys.filter((key) => {
     const profile = data.profiles[key] || {};
-    const studentDept = profile.departmentId || data.departments[0]?.id;
-    if (isHOD && studentDept !== myDeptId) return false; // HOD never sees another department's students, full stop
-    if (isDirector && deptTab !== "all" && studentDept !== deptTab) return false;
+    // No fallback here either: a genuinely-unassigned student (departmentId null) must show up
+    // as unassigned, not silently as a member of whichever department happens to be first.
+    const studentDept = profile.departmentId || null;
+    if (isHOD) return studentDept === myDeptId; // an HOD never sees another department's students, and never sees not-yet-assigned ones either
+    if (isDirector && deptTab === "unassigned") {
+      if (studentDept !== null) return false;
+    } else if (isDirector && deptTab !== "all" && studentDept !== deptTab) {
+      return false;
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       const idMatch = (data.profiles[key]?.email || "").toLowerCase().includes(q);
@@ -53,6 +62,8 @@ function AdminStudentsView({ data, setData, onViewStudent, refreshProfiles }) {
     }
     return true;
   });
+
+  const unassignedCount = studentKeys.filter((k) => !data.profiles[k]?.departmentId).length;
 
   // Students now sign themselves up (real accounts) — admin can no longer mint a login
   // here; department assignment happens via the roster's per-row picker below instead.
@@ -126,6 +137,14 @@ function AdminStudentsView({ data, setData, onViewStudent, refreshProfiles }) {
               {dp.name}
             </button>
           ))}
+          <button onClick={() => setDeptTab("unassigned")} className={`text-xs px-3 py-1.5 rounded-md font-semibold ${deptTab === "unassigned" ? "text-white" : ""}`} style={deptTab === "unassigned" ? { background: "#A6423A" } : { color: unassignedCount ? "#A6423A" : "#6E6455" }}>
+            Unassigned{unassignedCount ? ` (${unassignedCount})` : ""}
+          </button>
+        </div>
+      )}
+      {isDirector && data.departments.length <= 1 && unassignedCount > 0 && (
+        <div className="text-xs px-3 py-2 rounded-lg" style={{ background: "#F1E1DC", color: "#A6423A" }}>
+          {unassignedCount} student{unassignedCount === 1 ? "" : "s"} signed up but {unassignedCount === 1 ? "hasn't" : "haven't"} been assigned a department yet — use the picker on their row below once you've added a department.
         </div>
       )}
       {isHOD && data.departments.length > 1 && (
@@ -168,16 +187,19 @@ function AdminStudentsView({ data, setData, onViewStudent, refreshProfiles }) {
                     <div className="text-sm font-medium truncate flex items-center gap-1.5" style={{ color: "#2B2620" }}>
                       {profile.name || "Student"}
                       {isInactive && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: "#F1E1DC", color: "#A6423A" }}>Deactivated</span>}
+                      {!profile.departmentId && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: "#F1E1DC", color: "#A6423A" }}>Unassigned</span>}
                     </div>
                     <div className="text-xs truncate" style={{ color: "#A79E8C" }}>{profile.email}</div>
                   </div>
-                  {manageable && data.departments.length > 1 && (
+                  {manageable && (data.departments.length > 1 || !profile.departmentId) && (
                     <select
-                      value={profile.departmentId || data.departments[0]?.id}
+                      value={profile.departmentId || ""}
                       onChange={(e) => changeDepartment(key, e.target.value)}
                       disabled={changingDept === key}
-                      className="text-xs border border-[#E6DFD1] rounded-lg px-2 py-1 flex-shrink-0 disabled:opacity-50"
+                      className="text-xs border rounded-lg px-2 py-1 flex-shrink-0 disabled:opacity-50"
+                      style={profile.departmentId ? { borderColor: "#E6DFD1" } : { borderColor: "#A6423A", color: "#A6423A", fontWeight: 600 }}
                     >
+                      {!profile.departmentId && <option value="" disabled>Choose department…</option>}
                       {activeDepartments(data).some((dp) => dp.id === profile.departmentId) ? null : data.departments.filter((dp) => dp.id === profile.departmentId).map((dp) => <option key={dp.id} value={dp.id}>{dp.name} (inactive)</option>)}
                       {activeDepartments(data).map((dp) => <option key={dp.id} value={dp.id}>{dp.name}</option>)}
                     </select>
